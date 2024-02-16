@@ -1,6 +1,6 @@
 use std::ffi::OsStr;
 use std::path::PathBuf;
-use std::{env, fs};
+use std::{env,fs};
 
 fn main() {
     let target = env::var("TARGET").unwrap();
@@ -8,7 +8,7 @@ fn main() {
     let xmpath = PathBuf::from("rss")
         .canonicalize()
         .expect("rss directory not found");
-    if target.eq("thumbv7em-none-eabihf") {
+    let lib = if target.eq("thumbv7em-none-eabihf") {
         cc::Build::new()
             .file("c_src/wrapper.c")
             .include("c_src")
@@ -17,10 +17,12 @@ fn main() {
             .warnings_into_errors(true)
             .extra_warnings(true)
             .compile("log");
-        let lib = xmpath.join("lib/arm");
+        xmpath.join("lib/arm");
     } else if target.eq("xtensa-esp32s3-none-elf") {
-        cc::Build::new().file("c_src/wrapper.c").include("c_src");
-        let lib = xmpath.join("lib/xtensa");
+        cc::Build::new()
+            .file("c_src/wrapper.c")
+            .include("c_src");
+        xmpath.join("lib/xtensa");
     }
 
     println!("cargo:rustc-link-search={}", lib.display());
