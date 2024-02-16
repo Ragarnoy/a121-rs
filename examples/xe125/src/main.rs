@@ -3,6 +3,8 @@
 
 use core::cell::RefCell;
 
+use a121_rs::radar;
+use a121_rs::radar::Radar;
 use defmt::info;
 use embassy_executor::Spawner;
 use embassy_stm32::exti::ExtiInput;
@@ -15,7 +17,7 @@ use embassy_stm32::spi::{Config, Spi};
 use embassy_stm32::time::Hertz;
 use embassy_time::{Delay, Duration, Timer};
 use embedded_hal_bus::spi::ExclusiveDevice;
-use a121_rs::radar::Radar;
+use radar::rss_version;
 #[allow(unused_imports)]
 use {defmt_rtt as _, panic_probe as _};
 
@@ -56,11 +58,17 @@ async fn main(_spawner: Spawner) {
     enable.set_high();
     Timer::after(Duration::from_millis(10)).await;
 
-    let radar = Radar::new(1, spi_mut_ref.get_mut(), interrupt).enable();
-    info!("Radar enabled");
+    info!("RSS Version: {}", rss_version());
 
-    let rss_version = radar.version();
-    info!("RSS Version: {}", rss_version);
+    let mut radar = Radar::new(1, spi_mut_ref.get_mut(), interrupt).enable();
+    info!("Radar enabled");
+    let mut buffer = [0u8; 100];
+    let mut calibration = radar.sensor.calibrate(&mut buffer).await.unwrap();
+    radar
+        .sensor
+        .prepare(&radar.config, &mut calibration, &mut buffer)
+        .unwrap();
+
     loop {
         Timer::after(Duration::from_secs(1)).await;
         info!("Hello, radar!");
@@ -112,4 +120,9 @@ pub extern "C" fn __hardfp_sinf(f: f32) -> f32 {
 #[no_mangle]
 pub extern "C" fn __hardfp_roundf(f: f32) -> f32 {
     libm::roundf(f)
+}
+
+#[no_mangle]
+pub extern "C" fn __hardfp_sqrtf(f: f32) -> f32 {
+    libm::sqrtf(f)
 }

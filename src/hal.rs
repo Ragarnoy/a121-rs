@@ -80,7 +80,7 @@ impl AccHalImpl {
     ) {
         let tmp_buf = unsafe { core::slice::from_raw_parts_mut(buffer, buffer_length) };
         trace!(
-            "Transfer16 function called: buffer={:x} (size:{})",
+            "Transfer16 function called: buffer={:#X} (size:{})",
             tmp_buf,
             buffer_length
         );
@@ -90,7 +90,7 @@ impl AccHalImpl {
             let spi = binding.as_mut().unwrap_unchecked();
             // Perform the SPI transfer
             spi.transfer_in_place(tmp_buf).unwrap_unchecked();
-            trace!("Transfer16 function completed, buffer={:x}", tmp_buf);
+            trace!("Transfer16 function completed, buffer={:#X}", tmp_buf);
         });
     }
 
