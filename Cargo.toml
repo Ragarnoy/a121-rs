@@ -19,3 +19,11 @@ spin = "0.9.8"
 [build-dependencies]
 bindgen = "0.69"
 cc = "1.0"
+
+[profile.dev]
+lto = true
+codegen-units = 1
+
+[profile.release]
+debug = 2
+codegen-units = 1
