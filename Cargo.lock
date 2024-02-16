@@ -472,7 +472,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "rad-hard-sys"
+name = "a121-rs"
 version = "0.1.0"
 dependencies = [
  "bindgen",
