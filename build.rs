@@ -1,6 +1,6 @@
 use std::ffi::OsStr;
-use std::{env,fs};
 use std::path::PathBuf;
+use std::{env, fs};
 
 fn main() {
     let target = env::var("TARGET").unwrap();
@@ -19,9 +19,7 @@ fn main() {
             .compile("log");
         let lib = xmpath.join("lib/arm");
     } else if target.eq("xtensa-esp32s3-none-elf") {
-        cc::Build::new()
-            .file("c_src/wrapper.c")
-            .include("c_src");
+        cc::Build::new().file("c_src/wrapper.c").include("c_src");
         let lib = xmpath.join("lib/xtensa");
     }
 
