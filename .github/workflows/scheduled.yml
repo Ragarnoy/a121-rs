@@ -18,8 +18,6 @@ jobs:
   nightly:
     runs-on: ubuntu-latest
     name: ubuntu / nightly
-    strategy:
-      matrix:
     steps:
       - uses: actions/checkout@v4
         with:
