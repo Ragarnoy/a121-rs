@@ -1,7 +1,7 @@
 [build]
 #target = "xtensa-esp32s3-none-elf"
 #target = "thumbv7em-none-eabihf"
-[target.xtensa-esp32s3-none-elf]
+#[target.xtensa-esp32s3-none-elf]
 runner = "espflash flash --monitor"
 
 rustflags = [
