@@ -10,6 +10,7 @@ fn main() {
     let target = match target.as_str() {
         "thumbv7em-none-eabihf" => "thumbv7em-none-eabihf",
         "xtensa-esp32s3-none-elf" => "xtensa-esp32s3-none-elf",
+        "xtensa-esp32s3-espidf" => "xtensa-esp32s3-espidf",
         _ => "thumbv7em-none-eabihf",
     };
     println!("Target we are using: {}", target);
@@ -28,8 +29,12 @@ fn main() {
             .extra_warnings(true)
             .compile("log");
         xmpath.join("lib/arm")
-    } else if target.eq("xtensa-esp32s3-none-elf") {
-        cc::Build::new().file("c_src/wrapper.c").include("c_src");
+    } else if target.eq("xtensa-esp32s3-none-elf") | target.eq("xtensa-esp32s3-espidf") {
+        cc::Build::new()
+            .file("c_src/wrapper.c")
+            .include("c_src")
+            .warnings_into_errors(true)
+            .extra_warnings(true);
         xmpath.join("lib/xtensa")
     } else {
         panic!("Target is not set or not supported.");
@@ -43,7 +48,13 @@ fn main() {
     );
     println!("cargo:rerun-if-changed=c_src/wrapper.c");
 
-    let headers = xmpath.join("include");
+    let headers = match target.into() {
+        "thumbv7em-none-eabihf" => xmpath.join("include/arm"),
+        "xtensa-esp32s3-none-elf" => xmpath.join("include/xtensa"),
+        "xtensa-esp32s3-espidf" => xmpath.join("include/xtensa"),
+        _ => panic!("Honestly shouldn't arrive here."),
+    };
+    //let headers = xmpath.join("include");
     if !headers.exists() {
         panic!("headers not found");
     }
@@ -55,9 +66,9 @@ fn main() {
             .layout_tests(false)
             .generate_cstr(true)
             .use_core()
-    } else if target.eq("xtensa-esp32s3-none-elf") {
+    } else if target.eq("xtensa-esp32s3-none-elf") | target.eq("xtensa-esp32s3-espidf") {
         bindgen::Builder::default()
-            .clang_arg("--target=xtensa-esp32s3-none-elf")
+            .clang_arg("--target=xtensa")
             .clang_arg(format!("-I{}", headers.display()))
             .layout_tests(false)
             .generate_cstr(true)
