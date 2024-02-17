@@ -22,9 +22,15 @@ where
 
 /// Radar Sensor Software Version
 /// 0xMMMMmmPP where M is major, m is minor and P is patch
-#[derive(Debug, defmt::Format)]
+#[derive(Debug)]
 pub struct RssVersion {
     version: u32,
+}
+
+impl defmt::Format for RssVersion {
+    fn format(&self, f: defmt::Formatter) {
+        defmt::write!(f, "{}.{}.{}", self.major(), self.minor(), self.patch())
+    }
 }
 
 impl Display for RssVersion {
@@ -43,11 +49,11 @@ impl RssVersion {
     }
 
     pub fn minor(&self) -> u8 {
-        ((self.version & 0x0000FF00) >> 16) as u8
+        ((self.version & 0x0000FF00) >> 8) as u8
     }
 
     pub fn patch(&self) -> u8 {
-        ((self.version & 0x000000FF) >> 8) as u8
+        (self.version & 0x000000FF) as u8
     }
 }
 
@@ -92,9 +98,9 @@ where
     pub fn id(&self) -> u32 {
         self.id
     }
+}
 
-    pub fn version(&self) -> RssVersion {
-        let version = unsafe { acc_version_get_hex() };
-        RssVersion::new(version)
-    }
+pub fn rss_version() -> RssVersion {
+    let version = unsafe { acc_version_get_hex() };
+    RssVersion::new(version)
 }
