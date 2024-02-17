@@ -48,7 +48,7 @@ fn main() {
     );
     println!("cargo:rerun-if-changed=c_src/wrapper.c");
 
-    let headers = match target.into() {
+    let headers = match target {
         "thumbv7em-none-eabihf" => xmpath.join("include/arm"),
         "xtensa-esp32s3-none-elf" => xmpath.join("include/xtensa"),
         "xtensa-esp32s3-espidf" => xmpath.join("include/xtensa"),
