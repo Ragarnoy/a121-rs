@@ -1,6 +1,7 @@
+use core::panic;
 use std::ffi::OsStr;
 use std::path::PathBuf;
-use std::{env,fs};
+use std::{env, fs};
 
 fn main() {
     let target = env::var("TARGET").unwrap();
@@ -19,10 +20,10 @@ fn main() {
             .compile("log");
         xmpath.join("lib/arm")
     } else if target.eq("xtensa-esp32s3-none-elf") {
-        cc::Build::new()
-            .file("c_src/wrapper.c")
-            .include("c_src");
+        cc::Build::new().file("c_src/wrapper.c").include("c_src");
         xmpath.join("lib/xtensa")
+    } else {
+        panic!("Target is not set or not supported.");
     };
 
     println!("cargo:rustc-link-search={}", lib.display());
@@ -52,6 +53,8 @@ fn main() {
             .layout_tests(false)
             .generate_cstr(true)
             .use_core()
+    } else {
+        panic!("Target is not set or not supported.");
     };
 
     for entry in fs::read_dir(&headers).unwrap() {
