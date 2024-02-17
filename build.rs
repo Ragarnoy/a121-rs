@@ -4,7 +4,14 @@ use std::path::PathBuf;
 use std::{env, fs};
 
 fn main() {
-    let target = env::var("TARGET").unwrap();
+    let target = env::var("TARGET").unwrap(); // the right way of doing it.
+    println!("Target we received from the system is: {}", target);
+    //This whole match statement shouldn't be here.
+    let target = match target.as_str() {
+        "thumbv7em-none-eabihf" => "thumbv7em-none-eabihf",
+        "xtensa-esp32s3-none-elf" => "xtensa-esp32s3-none-elf",
+        _ => "thumbv7em-none-eabihf",
+    };
 
     let xmpath = PathBuf::from("rss")
         .canonicalize()

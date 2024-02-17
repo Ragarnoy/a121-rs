@@ -1,3 +1,5 @@
+[build]
+#target = "thumbv7em-none-eabihf"
 [target.xtensa-esp32s3-none-elf]
 runner = "espflash flash --monitor"
 
