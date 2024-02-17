@@ -17,12 +17,12 @@ fn main() {
             .warnings_into_errors(true)
             .extra_warnings(true)
             .compile("log");
-        xmpath.join("lib/arm");
+        xmpath.join("lib/arm")
     } else if target.eq("xtensa-esp32s3-none-elf") {
         cc::Build::new()
             .file("c_src/wrapper.c")
             .include("c_src");
-        xmpath.join("lib/xtensa");
+        xmpath.join("lib/xtensa")
     };
 
     println!("cargo:rustc-link-search={}", lib.display());
@@ -44,14 +44,14 @@ fn main() {
             .clang_arg(format!("-I{}", headers.display()))
             .layout_tests(false)
             .generate_cstr(true)
-            .use_core();
+            .use_core()
     } else if target.eq("xtensa-esp32s3-none-elf") {
         bindgen::Builder::default()
             .clang_arg("--target=xtensa-esp32s3-none-elf")
             .clang_arg(format!("-I{}", headers.display()))
             .layout_tests(false)
             .generate_cstr(true)
-            .use_core();
+            .use_core()
     };
 
     for entry in fs::read_dir(&headers).unwrap() {
