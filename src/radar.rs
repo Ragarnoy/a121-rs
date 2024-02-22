@@ -63,7 +63,7 @@ where
 {
     pub fn new<SPI>(id: u32, spi: &'static mut SPI, interrupt: SINT) -> Self
     where
-        SPI: SpiDevice<u16, Error = SpiErrorKind> + Send + 'static,
+        SPI: SpiDevice<u8, Error = SpiErrorKind> + Send + 'static,
     {
         let hal = AccHalImpl::new(spi);
         hal.register();

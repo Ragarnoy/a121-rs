@@ -10,7 +10,7 @@ use crate::rss_bindings::{
     acc_hal_a121_t, acc_hal_optimization_t, acc_rss_hal_register, acc_sensor_id_t, c_log_stub,
 };
 
-pub type RadarSpi = dyn SpiDevice<u16, Error = SpiErrorKind> + Send;
+pub type RadarSpi = dyn SpiDevice<u8, Error = SpiErrorKind> + Send;
 pub type RefRadarSpi = &'static mut RadarSpi;
 
 /// Global instance of a Mutex, wrapping a RefCell that optionally contains a mutable reference to a `SpiBus`.
@@ -49,17 +49,15 @@ impl AccHalImpl {
     /// Panics if the HAL registration fails.
     pub fn new<SPI>(spi: &'static mut SPI) -> Self
     where
-        SPI: SpiDevice<u16, Error = SpiErrorKind> + Send + 'static,
+        SPI: SpiDevice<u8, Error = SpiErrorKind> + Send + 'static,
     {
         let inner = acc_hal_a121_t {
             max_spi_transfer_size: u16::MAX,
             mem_alloc: Some(mem_alloc),
             mem_free: Some(mem_free),
-            transfer: None,
+            transfer: Some(Self::transfer8_function),
             log: Some(c_log_stub),
-            optimization: acc_hal_optimization_t {
-                transfer16: Some(Self::transfer16_function),
-            },
+            optimization: acc_hal_optimization_t { transfer16: None },
         };
         SPI_INSTANCE.lock(|cell| cell.replace(Some(spi)));
         Self { inner }
@@ -73,6 +71,7 @@ impl AccHalImpl {
     /// # Safety
     ///
     /// This function is unsafe as it involves raw pointers and direct hardware access.
+    #[allow(dead_code)]
     extern "C" fn transfer16_function(
         _sensor_id: acc_sensor_id_t,
         buffer: *mut u16,
@@ -87,10 +86,30 @@ impl AccHalImpl {
         // Borrow a mutable reference to the SpiBus
         SPI_INSTANCE.lock(|cell| unsafe {
             let mut binding = cell.borrow_mut();
+            let _spi = binding.as_mut().unwrap_unchecked();
+            // Perform the SPI transfer
+            todo!("Perform the SPI 16 transfer");
+        });
+    }
+
+    extern "C" fn transfer8_function(
+        _sensor_id: acc_sensor_id_t,
+        buffer: *mut u8,
+        buffer_length: usize,
+    ) {
+        let tmp_buf = unsafe { core::slice::from_raw_parts_mut(buffer, buffer_length) };
+        trace!(
+            "Transfer8 function called: buffer={:#X} (size:{})",
+            tmp_buf,
+            buffer_length
+        );
+        // Borrow a mutable reference to the SpiBus
+        SPI_INSTANCE.lock(|cell| unsafe {
+            let mut binding = cell.borrow_mut();
             let spi = binding.as_mut().unwrap_unchecked();
             // Perform the SPI transfer
             spi.transfer_in_place(tmp_buf).unwrap_unchecked();
-            trace!("Transfer16 function completed, buffer={:#X}", tmp_buf);
+            trace!("Transfer8 function completed, buffer={:#X}", tmp_buf);
         });
     }
 
