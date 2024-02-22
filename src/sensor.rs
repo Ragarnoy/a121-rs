@@ -1,4 +1,5 @@
 use core::ffi::c_void;
+use core::fmt::{Debug, Formatter};
 use core::marker::PhantomData;
 use core::ops::{Deref, DerefMut};
 use defmt::trace;
@@ -24,6 +25,12 @@ pub struct Hibernating;
 pub struct TransitionError<S, SINT: Wait> {
     pub sensor: Sensor<S, SINT>,
     error: SensorError,
+}
+
+impl<S, SINT: Wait> Debug for TransitionError<S, SINT> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        write!(f, "TransitionError: {:?}", self.error)
+    }
 }
 
 impl<SINT: Wait> TransitionError<Enabled, SINT> {
@@ -76,6 +83,16 @@ pub struct Sensor<S, SINT: Wait> {
     prepared: bool,
     calibrated: bool,
     _state: PhantomData<S>,
+}
+
+impl<S, SINT: Wait> Sensor<S, SINT> {
+    pub fn sensor_id(&self) -> u32 {
+        self.sensor_id
+    }
+
+    pub fn status(&self) {
+        unsafe { acc_sensor_status(self.inner.deref()) }
+    }
 }
 
 impl<SINT: Wait> Sensor<Disabled, SINT> {
@@ -159,7 +176,7 @@ impl<SINT: Wait> Sensor<Enabled, SINT> {
     /// The caller should check the status of the `CalibrationResult`
     /// to determine if additional calibration steps are required.
     pub async fn calibrate(&mut self, buffer: &mut [u8]) -> Result<CalibrationResult, SensorError> {
-        let mut calibration_status: bool = false;
+        let mut calibration_complete: bool = false;
         let mut calibration_result = CalibrationResult::new();
         let calibration_attempt: bool;
 
@@ -168,23 +185,23 @@ impl<SINT: Wait> Sensor<Enabled, SINT> {
             // Start the calibration process
             calibration_attempt = acc_sensor_calibrate(
                 self.inner.deref_mut(),
-                &mut calibration_status as *mut bool,
+                &mut calibration_complete as *mut bool,
                 calibration_result.mut_ptr(),
                 buffer.as_mut_ptr() as *mut c_void,
                 buffer.len() as u32,
             );
         }
         if calibration_attempt {
-            if !calibration_status {
+            while !calibration_complete {
                 // Wait for the interrupt to occur asynchronously
                 self.interrupt
-                    .wait_for_low()
+                    .wait_for_high()
                     .await
                     .expect("Failed to wait for interrupt");
                 unsafe {
                     acc_sensor_calibrate(
                         self.inner.deref_mut(),
-                        &mut calibration_status as *mut bool,
+                        &mut calibration_complete as *mut bool,
                         calibration_result.mut_ptr(),
                         buffer.as_mut_ptr() as *mut c_void,
                         buffer.len() as u32,
@@ -192,7 +209,7 @@ impl<SINT: Wait> Sensor<Enabled, SINT> {
                 }
             }
 
-            self.calibrated = calibration_status;
+            self.calibrated = calibration_complete;
             Ok(calibration_result)
         } else {
             Err(SensorError::FailedCalibration)
@@ -233,6 +250,7 @@ impl<SINT: Wait> Sensor<Enabled, SINT> {
         }
         if ret {
             self.prepared = true;
+            trace!("Sensor prepared");
             Ok(())
         } else {
             Err(SensorError::FailedPrepare)
