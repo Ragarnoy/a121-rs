@@ -57,9 +57,7 @@ impl AccHalImpl {
             mem_free: Some(mem_free),
             transfer: Some(Self::transfer8_function),
             log: Some(c_log_stub),
-            optimization: acc_hal_optimization_t {
-                transfer16: None,
-            },
+            optimization: acc_hal_optimization_t { transfer16: None },
         };
         SPI_INSTANCE.lock(|cell| cell.replace(Some(spi)));
         Self { inner }
