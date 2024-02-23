@@ -1,4 +1,4 @@
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, defmt::Format)]
 pub enum SensorError {
     FailedCalibration,
     FailedPrepare,

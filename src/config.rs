@@ -482,4 +482,21 @@ impl RadarConfig {
         }
         Some(Subsweep::new(index))
     }
+
+    /// Get the buffer size needed for the current configuration
+    /// # Returns
+    /// * `Ok(u32)` - The buffer size needed for the current configuration
+    /// * `Err(ConfigError::BufferSize)` - If the buffer size could not be determined
+    pub fn config_buffer_size(&self) -> Result<u32, ConfigError> {
+        let mut buffer_size = 0;
+        let result: bool;
+
+        unsafe { result = acc_rss_get_buffer_size(self.inner, &mut buffer_size) };
+
+        if result {
+            Ok(buffer_size)
+        } else {
+            Err(ConfigError::BufferSize)
+        }
+    }
 }

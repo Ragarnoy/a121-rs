@@ -25,8 +25,15 @@ impl CalibrationInfo {
     }
 }
 
+#[derive(Debug)]
 pub struct CalibrationResult {
     inner: acc_cal_result_t,
+}
+
+impl defmt::Format for CalibrationResult {
+    fn format(&self, f: defmt::Formatter) {
+        defmt::write!(f, "{:?}", self.inner.data)
+    }
 }
 
 impl CalibrationResult {
@@ -63,11 +70,11 @@ impl CalibrationResult {
         }
     }
 
-    pub fn calibration_info(&self) -> Result<CalibrationInfo, SensorError> {
+    pub fn temperature(&self) -> Result<i16, SensorError> {
         let mut calibration_info = CalibrationInfo::default();
         let res = unsafe { acc_sensor_get_cal_info(self.ptr(), calibration_info.mut_ptr()) };
         if res {
-            Ok(calibration_info)
+            Ok(calibration_info.temperature())
         } else {
             Err(SensorError::CalibrationInfo)
         }

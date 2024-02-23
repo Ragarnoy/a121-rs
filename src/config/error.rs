@@ -7,5 +7,8 @@ pub enum ConfigError {
     ContinuousSweepMode,
     /// Error indicating invalid sweep rate setting.
     SweepRate,
+    /// Error indicating invalid number of subsweeps setting.
     NumSubsweep,
+
+    BufferSize,
 }

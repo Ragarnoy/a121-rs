@@ -1,4 +1,4 @@
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, defmt::Format)]
 /// Radar profiles indicating different settings for the sensor's RX and TX paths.
 pub enum RadarProfile {
     /// Profile 1
