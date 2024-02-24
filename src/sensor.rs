@@ -403,6 +403,10 @@ impl<SINT: Wait> Sensor<Ready, SINT> {
         // Implementation to start the radar measurement
         let success = unsafe { acc_sensor_measure(self.inner.deref_mut()) };
         if success {
+            self.interrupt
+                .wait_for_high()
+                .await
+                .expect("Failed to wait for interrupt");
             Ok(())
         } else {
             Err(SensorError::MeasurementError)
