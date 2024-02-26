@@ -1,4 +1,3 @@
-use alloc::vec::Vec;
 use core::fmt::{Debug, Display, Formatter};
 use core::marker::PhantomData;
 
@@ -119,11 +118,7 @@ where
         mut self,
         calibration_result: &mut CalibrationResult,
     ) -> Result<Radar<Ready, SINT>, TransitionError<Enabled, SINT>> {
-        let mut buf = Vec::with_capacity(
-            self.config
-                .config_buffer_size()
-                .expect("Failed to get config buffer size") as usize,
-        );
+        let mut buf = [0u8; 2560];
         if self
             .sensor
             .prepare(&self.config, calibration_result, &mut buf)
@@ -213,11 +208,7 @@ where
     }
 
     pub async fn calibrate(&mut self) -> Result<CalibrationResult, SensorError> {
-        let mut buf = Vec::with_capacity(
-            self.config
-                .config_buffer_size()
-                .expect("Failed to get config buffer size") as usize,
-        );
+        let mut buf = [0u8; 2560];
         self.sensor.calibrate(&mut self.interrupt, &mut buf).await
     }
 
