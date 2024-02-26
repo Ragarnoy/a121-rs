@@ -90,7 +90,7 @@ async fn main(_spawner: Spawner) {
 
 fn xm125_spi_config() -> Config {
     let mut spi_config = Config::default();
-    spi_config.frequency = Hertz(10_000);
+    spi_config.frequency = Hertz(1 * 1000 * 1000);
     spi_config
 }
 
