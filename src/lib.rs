@@ -1,5 +1,7 @@
 #![no_std]
 
+extern crate alloc;
+
 use talc::{ClaimOnOom, Span, Talc, Talck};
 
 /// Configuration for the XM125
