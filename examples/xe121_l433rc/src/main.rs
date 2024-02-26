@@ -6,7 +6,6 @@ use core::cell::RefCell;
 use a121_rs::config::profile::RadarProfile::AccProfile5;
 use a121_rs::radar;
 use a121_rs::radar::Radar;
-use a121_rs::sensor::data::RadarData;
 use defmt::{info, warn};
 use embassy_executor::Spawner;
 use embassy_stm32::dma::NoDma;
@@ -65,21 +64,16 @@ async fn main(_spawner: Spawner) {
 
     info!("RSS Version: {}", rss_version());
 
-    let mut radar = Radar::new(1, spi_mut_ref.get_mut(), interrupt).enable();
+    let mut radar = Radar::new(1, spi_mut_ref.get_mut(), interrupt);
     radar.config.set_profile(AccProfile5);
     info!("Radar enabled");
-    Timer::after(Duration::from_millis(3)).await;
     let mut buffer = [0u8; 2560];
-    loop {
+    let mut radar = loop {
         buffer.fill(0);
-        if let Ok(mut calibration) = radar.sensor.calibrate(&mut buffer).await {
+        if let Ok(mut calibration) = radar.calibrate().await {
             if let Ok(()) = calibration.validate_calibration() {
                 info!("Calibration is valid");
-                radar
-                    .sensor
-                    .prepare(&radar.config, &mut calibration, &mut buffer)
-                    .unwrap();
-                break;
+                break radar.prepare_sensor(&mut calibration).unwrap();
             } else {
                 warn!("Calibration is invalid");
                 warn!("Calibration result: {:?}", calibration);
@@ -89,15 +83,12 @@ async fn main(_spawner: Spawner) {
             warn!("Calibration failed");
         }
         Timer::after(Duration::from_millis(1)).await;
-    }
+    };
     info!("Calibration complete!");
-    let mut sensor = radar.sensor.set_ready().unwrap();
 
     loop {
-        Timer::after(Duration::from_secs(1)).await;
-        let mut data = RadarData::new();
-        sensor.measure().await.unwrap();
-        sensor.read(&mut data).await.unwrap();
+        Timer::after(Duration::from_millis(200)).await;
+        let data = radar.measure().await.unwrap();
         info!("Data: {:?}", data);
     }
 }

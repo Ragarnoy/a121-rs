@@ -1,6 +1,7 @@
 const RADAR_DATA_SIZE: usize = 1024;
 
 /// Radar data from the sensor.
+#[derive(Debug, defmt::Format)]
 pub struct RadarData {
     pub data: [u8; RADAR_DATA_SIZE],
 }
