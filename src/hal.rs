@@ -129,13 +129,18 @@ impl AccHalImpl {
     }
 }
 
+extern "C" {
+    fn malloc(size: usize) -> *mut c_void;
+    fn free(ptr: *mut c_void);
+}
+
 /// Allocates memory for use by the radar SDK.
 ///
 /// # Safety
 ///
 /// This function is unsafe as it performs raw pointer manipulation.
 unsafe extern "C" fn mem_alloc(size: usize) -> *mut c_void {
-    tinyrlibc::malloc(size) as *mut c_void
+    malloc(size)
 }
 
 /// Frees memory previously allocated for the radar SDK.
@@ -144,8 +149,7 @@ unsafe extern "C" fn mem_alloc(size: usize) -> *mut c_void {
 ///
 /// This function is unsafe as it performs raw pointer manipulation.
 unsafe extern "C" fn mem_free(ptr: *mut c_void) {
-    let ptr = ptr as *mut u8;
-    tinyrlibc::free(ptr);
+    free(ptr);
 }
 
 /// This function is called by the C stub to log messages from the SDK.
