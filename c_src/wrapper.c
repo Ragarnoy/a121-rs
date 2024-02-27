@@ -1,4 +1,6 @@
-#include "wrapper.h"
+#include <stdarg.h>
+#include <stdio.h>
+#include "../rss/include/acc_definitions_common.h"
 
 extern void rust_log(uint32_t level, const char *message);
 
