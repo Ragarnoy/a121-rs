@@ -10,8 +10,6 @@ fn main() {
     cc::Build::new()
         .file("c_src/wrapper.c")
         .include("c_src")
-        .flag("-mfloat-abi=hard")
-        .flag("-mfpu=fpv4-sp-d16")
         .warnings_into_errors(true)
         .extra_warnings(true)
         .compile("log");
@@ -33,7 +31,6 @@ fn main() {
     }
 
     let mut bindings = bindgen::Builder::default()
-        .clang_arg("--target=arm-none-eabihf")
         .clang_arg(format!("-I{}", headers.display()))
         .layout_tests(false)
         .generate_cstr(true)
