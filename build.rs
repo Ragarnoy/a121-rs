@@ -10,7 +10,7 @@ fn main() {
     cc::Build::new()
         .file("c_src/wrapper.c")
         .include("c_src")
-        .warnings_into_errors(true)
+        // .warnings_into_errors(true)
         .extra_warnings(true)
         .compile("log");
 

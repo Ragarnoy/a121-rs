@@ -156,7 +156,7 @@ unsafe extern "C" fn mem_free(ptr: *mut c_void) {
 /// # Safety
 /// This function is unsafe because it takes a raw pointer.
 #[no_mangle]
-pub unsafe extern "C" fn rust_log(level: c_uint, message: *const c_char) {
+pub unsafe extern "C" fn rust_log(level: u32, message: *const c_char) {
     let c_str = unsafe { CStr::from_ptr(message) };
     let str_slice = c_str.to_str().unwrap_or("");
 
