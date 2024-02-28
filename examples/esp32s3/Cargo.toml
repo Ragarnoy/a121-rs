@@ -1,0 +1,22 @@
+[package]
+name = "acconeer-esp32s3-example"
+version = "0.1.0"
+authors = ["Dion Dokter <diondokter@gmail.com>"]
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+[profile.release]
+debug = true
+
+[dependencies]
+esp32s3-hal = { version = "0.15.0", features = ["async", "eh1"] }
+esp-backtrace = { version = "0.11.0", features = ["esp32s3", "panic-handler", "exception-handler", "println"] }
+esp-println = { version = "0.9.0", features = ["esp32s3", "defmt-espflash"] }
+defmt = "0.3.5"
+
+a121-rs = { path = "../../a121-rs" }
+static_cell = { version = "2.0.0", features = ["nightly"] }
+embedded-hal-bus = { version = "0.1.0", features = ["async"] }
+embedded-hal = "1.0.0"
+tinyrlibc = { git = "https://github.com/rust-embedded-community/tinyrlibc.git", version = "0.3.0" }
+embedded-alloc = "0.5.1"
