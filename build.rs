@@ -1,6 +1,6 @@
 use std::ffi::OsStr;
-use std::fs;
 use std::path::PathBuf;
+use std::{env, fs};
 
 fn main() {
     let xmpath = PathBuf::from("rss")
@@ -14,15 +14,21 @@ fn main() {
         .extra_warnings(true)
         .compile("log");
 
-    // Assuming 'lib' directory contains the compiled library for ARM architecture
-    let lib = xmpath.join("lib");
-
-    println!("cargo:rustc-link-search={}", lib.display());
+    // 'acc_rss_libs' directory is supplied by the user, it contains the .a files compiled for their target
+    let acc_rss_libs = match env::var("ACC_RSS_LIBS") {
+        Ok(val) => PathBuf::from(val),
+        Err(_) => {
+            panic!("Error: ACC_RSS_LIBS not set!");
+        }
+    };
+    println!("cargo:rustc-link-search={}", acc_rss_libs.display());
     println!("cargo:rustc-link-lib=static=acconeer_a121");
     println!(
         "cargo:rerun-if-changed={}",
         xmpath.join("include").display()
     );
+    eprintln!("ACC_RSS_LIBS: {}", &acc_rss_libs.to_str().unwrap());
+
     println!("cargo:rerun-if-changed=c_src/wrapper.c");
 
     let headers = xmpath.join("include");

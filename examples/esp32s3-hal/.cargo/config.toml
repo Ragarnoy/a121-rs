@@ -21,3 +21,4 @@ MCU="esp32s3"
 ESP_IDF_VERSION = "v5.1.2"
 CROSS_COMPILE="xtensa-esp32-elf"
 DEFMT_LOG="trace"
+ACC_RSS_LIBS={ value = "acc", relative = true }
