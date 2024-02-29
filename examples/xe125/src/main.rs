@@ -3,6 +3,7 @@
 
 use core::cell::RefCell;
 
+use a121_rs::detector::distance::RadarDistanceDetector;
 use a121_rs::radar;
 use a121_rs::radar::Radar;
 use defmt::{info, warn};
@@ -30,7 +31,7 @@ type SpiDeviceMutex =
 static mut SPI_DEVICE: Option<RefCell<SpiAdapter<SpiDeviceMutex>>> = None;
 
 #[embassy_executor::main]
-async fn main(_spawner: Spawner) {
+async fn main(spawner: Spawner) {
     info!("Starting");
     let p = embassy_stm32::init(xm125_clock_config());
 
@@ -60,19 +61,18 @@ async fn main(_spawner: Spawner) {
 
     info!("RSS Version: {}", rss_version());
 
-    let mut radar = Radar::new(1, spi_mut_ref.get_mut(), interrupt);
+    let mut radar = Radar::new(1, spi_mut_ref.get_mut(), interrupt, enable, Delay).await;
     info!("Radar enabled");
     let mut buffer = [0u8; 2560];
-    let mut radar = loop {
+    let mut calibration = loop {
         buffer.fill(0);
-        if let Ok(mut calibration) = radar.calibrate().await {
+        if let Ok(calibration) = radar.calibrate().await {
             if let Ok(()) = calibration.validate_calibration() {
                 info!("Calibration is valid");
-                break radar.prepare_sensor(&mut calibration).unwrap();
+                break calibration;
             } else {
                 warn!("Calibration is invalid");
                 warn!("Calibration result: {:?}", calibration);
-                enable.set_low();
             }
         } else {
             warn!("Calibration failed");
@@ -80,11 +80,48 @@ async fn main(_spawner: Spawner) {
         Timer::after(Duration::from_millis(1)).await;
     };
     info!("Calibration complete!");
+    let mut radar = radar.prepare_sensor(&mut calibration).unwrap();
+    let mut distance = RadarDistanceDetector::new(&mut radar);
+    let mut buffer = [0u8; 2560 * 3];
+    let mut static_call_result = [0u8; 2560];
+    let mut dynamic_call_result = distance
+        .calibrate_detector(&calibration, &mut buffer, &mut static_call_result)
+        .await
+        .unwrap();
 
     loop {
         Timer::after(Duration::from_millis(200)).await;
-        let data = radar.measure().await.unwrap();
-        info!("Data: {:?}", data);
+        'inner: loop {
+            distance
+                .prepare_detector(&calibration, &mut buffer)
+                .unwrap();
+            distance.measure().await.unwrap();
+
+            if let Ok(res) = distance.process_data(
+                &mut buffer,
+                &mut static_call_result,
+                &mut dynamic_call_result,
+            ) {
+                if res.num_distances() > 0 {
+                    info!(
+                        "{} Distances found:\n{:?}",
+                        res.num_distances(),
+                        res.distances()
+                    );
+                }
+                if res.calibration_needed() {
+                    info!("Calibration needed");
+                    break 'inner;
+                }
+            } else {
+                warn!("Failed to process data");
+            }
+        }
+        let calibration = distance.calibrate().await.unwrap();
+        dynamic_call_result = distance
+            .update_calibration(&calibration, &mut buffer)
+            .await
+            .unwrap();
     }
 }
 
