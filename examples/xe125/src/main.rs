@@ -47,7 +47,7 @@ async fn main(_spawner: Spawner) {
     info!("Starting");
     let p = embassy_stm32::init(xm125_clock_config());
 
-    let mut enable = Output::new(p.PB12, Level::Low, Speed::VeryHigh); // ENABLE on PB12
+    let enable = Output::new(p.PB12, Level::Low, Speed::VeryHigh); // ENABLE on PB12
     let cs_pin = Output::new(p.PB0, Level::High, Speed::VeryHigh);
     let input = Input::new(p.PB3, Pull::Up);
     let interrupt = ExtiInput::new(input, p.EXTI3); // INTERRUPT on PB3 used as 'ready' signal
@@ -91,8 +91,8 @@ async fn main(_spawner: Spawner) {
     info!("Calibration complete!");
     let mut radar = radar.prepare_sensor(&mut calibration).unwrap();
     let mut distance = RadarDistanceDetector::new(&mut radar);
-    let mut buffer = [0u8; 5700];
-    let mut static_call_result = [0u8; 2560];
+    let mut buffer = [0u8; 6056];
+    let mut static_call_result = [0u8; 1024];
     let mut dynamic_call_result = distance
         .calibrate_detector(&calibration, &mut buffer, &mut static_call_result)
         .await
