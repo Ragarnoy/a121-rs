@@ -10,6 +10,8 @@ use crate::sensor::data::RadarData;
 use crate::sensor::error::SensorError;
 use core::ffi::c_void;
 use defmt::trace;
+use embedded_hal::digital::OutputPin;
+use embedded_hal_async::delay::DelayNs;
 use embedded_hal_async::digital::Wait;
 use results::{DistanceResult, DynamicResult};
 
@@ -64,14 +66,24 @@ impl Drop for InnerRadarDistanceDetector {
     }
 }
 
-pub struct RadarDistanceDetector<'radar, SINT: Wait> {
-    pub radar: &'radar mut Radar<Ready, SINT>,
+pub struct RadarDistanceDetector<'radar, SINT, ENABLE, DLY>
+where
+    SINT: Wait,
+    ENABLE: OutputPin,
+    DLY: DelayNs,
+{
+    pub radar: &'radar mut Radar<Ready, SINT, ENABLE, DLY>,
     inner: InnerRadarDistanceDetector,
     config: RadarDistanceConfig,
 }
 
-impl<'radar, SINT: Wait> RadarDistanceDetector<'radar, SINT> {
-    pub fn new(radar: &'radar mut Radar<Ready, SINT>) -> Self {
+impl<'radar, SINT, ENABLE, DLY> RadarDistanceDetector<'radar, SINT, ENABLE, DLY>
+where
+    SINT: Wait,
+    ENABLE: OutputPin,
+    DLY: DelayNs,
+{
+    pub fn new(radar: &'radar mut Radar<Ready, SINT, ENABLE, DLY>) -> Self {
         let config = RadarDistanceConfig::default();
         let inner = InnerRadarDistanceDetector::new(&config);
         trace!("{:?}", DistanceSizes::new(&inner));

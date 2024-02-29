@@ -2,6 +2,8 @@ use core::ffi::c_void;
 
 use core::ops::{Deref, DerefMut};
 use defmt::trace;
+use embedded_hal::digital::OutputPin;
+use embedded_hal_async::delay::DelayNs;
 
 use embedded_hal_async::digital::Wait;
 
@@ -53,11 +55,21 @@ impl DerefMut for InnerSensor {
     }
 }
 
-pub(super) struct Sensor {
+pub(super) struct Sensor<ENABLE, DLY>
+where
+    ENABLE: OutputPin,
+    DLY: DelayNs,
+{
     inner: InnerSensor,
+    enable_pin: ENABLE,
+    dly: DLY,
 }
 
-impl Sensor {
+impl<ENABLE, DLY> Sensor<ENABLE, DLY>
+where
+    ENABLE: OutputPin,
+    DLY: DelayNs,
+{
     /// Creates a new sensor instance for the given sensor ID.
     ///
     /// A sensor instance represents a physical radar sensor and handles communication with it.
@@ -68,10 +80,29 @@ impl Sensor {
     ///
     /// # Returns
     /// `Some(Sensor)` if the sensor instance was successfully created, `None` otherwise.
-    pub fn new(sensor_id: u32) -> Option<Self> {
+    pub fn new(sensor_id: u32, enable_pin: ENABLE, delay: DLY) -> Option<Self> {
         trace!("Creating sensor {}", sensor_id);
         let inner = InnerSensor::new(sensor_id)?;
-        Some(Self { inner })
+        Some(Self {
+            inner,
+            enable_pin,
+            dly: delay,
+        })
+    }
+
+    pub async fn reset_sensor(&mut self) {
+        self.disable_sensor().await;
+        self.enable_sensor().await;
+    }
+
+    pub async fn enable_sensor(&mut self) {
+        self.enable_pin.set_high().unwrap();
+        self.dly.delay_ms(2).await;
+    }
+
+    pub async fn disable_sensor(&mut self) {
+        self.enable_pin.set_low().unwrap();
+        self.dly.delay_ms(2).await;
     }
 
     /// Calibrates the sensor asynchronously.
@@ -83,8 +114,8 @@ impl Sensor {
         let mut calibration_complete: bool = false;
         let mut calibration_result = CalibrationResult::new();
 
-        // interrupt.wait_for_low().await.expect("Failed to wait for interrupt");
-        // Directly enter the calibration process loop
+        self.reset_sensor().await;
+
         loop {
             let calibration_attempt = unsafe {
                 acc_sensor_calibrate(
