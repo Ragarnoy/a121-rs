@@ -74,7 +74,7 @@ async fn init(spawner: Spawner) {
     let spi_device = static_cell::make_static!(spi_device);
 
     gpio_r_en.set_high().unwrap();
-    Timer::after(Duration::from_millis(50)).await;
+    Timer::after(Duration::from_millis(5)).await;
     let mut radar = Radar::new(0, spi_device, gpio_r_int);
     println!("Radar enabled.");
     radar.config.set_profile(AccProfile5);
