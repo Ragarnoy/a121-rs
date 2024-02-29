@@ -83,8 +83,6 @@ async fn main(spawner: Spawner) {
     info!("RSS Version: {}", rss_version());
 
     let mut radar = Radar::new(1, spi_mut_ref.get_mut(), interrupt, enable, Delay).await;
-    radar.config.set_profile(AccProfile2);
-    radar.config.set_prf(Prf15_6Mhz);
     info!("Radar enabled");
     let mut buffer = [0u8; 2560];
     let mut calibration = loop {
