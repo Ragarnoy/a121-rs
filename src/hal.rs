@@ -1,5 +1,5 @@
 use core::cell::RefCell;
-use core::ffi::{c_char, c_uint, c_void, CStr};
+use core::ffi::{c_char, c_void, CStr};
 use defmt::trace;
 
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
