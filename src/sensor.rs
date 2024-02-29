@@ -75,6 +75,47 @@ impl Sensor {
     }
 
     /// Calibrates the sensor asynchronously.
+    pub async fn calibrate<SINT: Wait>(
+        &mut self,
+        interrupt: &mut SINT,
+        buffer: &mut [u8],
+    ) -> Result<CalibrationResult, SensorError> {
+        let mut calibration_complete: bool = false;
+        let mut calibration_result = CalibrationResult::new();
+
+        // interrupt.wait_for_low().await.expect("Failed to wait for interrupt");
+        // Directly enter the calibration process loop
+        loop {
+            let calibration_attempt = unsafe {
+                acc_sensor_calibrate(
+                    self.inner.deref_mut(),
+                    &mut calibration_complete as *mut bool,
+                    calibration_result.mut_ptr(),
+                    buffer.as_mut_ptr() as *mut c_void,
+                    buffer.len() as u32,
+                )
+            };
+
+            // Check if the calibration attempt was successful
+            if !calibration_attempt {
+                return Err(SensorError::CalibrationFailed);
+            }
+
+            // Break the loop if calibration is complete
+            if calibration_complete {
+                break;
+            }
+
+            // Wait for the interrupt signal asynchronously
+            interrupt
+                .wait_for_high()
+                .await
+                .expect("Failed to wait for interrupt");
+        }
+
+        Ok(calibration_result)
+    }
+
     ///
     /// Initiates the calibration process for the sensor and waits asynchronously for a sensor
     /// interrupt to indicate the completion or progress of the calibration.
@@ -93,48 +134,6 @@ impl Sensor {
     /// `Ok(CalibrationResult)` containing the result of the calibration if the calibration step
     /// was successful.
     /// If the calibration step fails, returns `Err(SensorError::FailedCalibration)`.
-    pub async fn calibrate<SINT: Wait>(
-        &mut self,
-        interrupt: &mut SINT,
-        buffer: &mut [u8],
-    ) -> Result<CalibrationResult, SensorError> {
-        let mut calibration_complete: bool = false;
-        let mut calibration_result = CalibrationResult::new();
-        let calibration_attempt: bool;
-
-        unsafe {
-            // Start the calibration process
-            calibration_attempt = acc_sensor_calibrate(
-                self.inner.deref_mut(),
-                &mut calibration_complete as *mut bool,
-                calibration_result.mut_ptr(),
-                buffer.as_mut_ptr() as *mut c_void,
-                buffer.len() as u32,
-            );
-        }
-        if calibration_attempt {
-            while !calibration_complete {
-                // Wait for the interrupt to occur asynchronously
-                interrupt
-                    .wait_for_high()
-                    .await
-                    .expect("Failed to wait for interrupt");
-                unsafe {
-                    acc_sensor_calibrate(
-                        self.inner.deref_mut(),
-                        &mut calibration_complete as *mut bool,
-                        calibration_result.mut_ptr(),
-                        buffer.as_mut_ptr() as *mut c_void,
-                        buffer.len() as u32,
-                    );
-                }
-            }
-
-            Ok(calibration_result)
-        } else {
-            Err(SensorError::CalibrationFailed)
-        }
-    }
 
     /// Prepares the sensor for measurement with a given configuration.
     ///
@@ -306,5 +305,9 @@ impl Sensor {
         } else {
             Err(SensorError::ReadError)
         }
+    }
+
+    pub unsafe fn inner(&self) -> *mut acc_sensor_t {
+        self.inner.inner
     }
 }

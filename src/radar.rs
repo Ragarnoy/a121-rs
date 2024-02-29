@@ -7,7 +7,9 @@ use embedded_hal_async::digital::Wait;
 use crate::config::RadarConfig;
 use crate::hal::AccHalImpl;
 use crate::processing::Processing;
-use crate::rss_bindings::{acc_sensor_connected, acc_sensor_id_t, acc_version_get_hex};
+use crate::rss_bindings::{
+    acc_sensor_connected, acc_sensor_id_t, acc_sensor_t, acc_version_get_hex,
+};
 use crate::sensor::calibration::CalibrationResult;
 use crate::sensor::data::RadarData;
 use crate::sensor::error::SensorError;
@@ -48,7 +50,7 @@ where
     pub config: RadarConfig,
     sensor: Sensor,
     pub processing: Processing,
-    interrupt: SINT,
+    pub(crate) interrupt: SINT,
     _hal: AccHalImpl,
     _state: PhantomData<STATE>,
 }
@@ -208,7 +210,7 @@ where
     }
 
     pub async fn calibrate(&mut self) -> Result<CalibrationResult, SensorError> {
-        let mut buf = [0u8; 2560];
+        let mut buf = [0u8; 5560];
         self.sensor.calibrate(&mut self.interrupt, &mut buf).await
     }
 
@@ -230,6 +232,10 @@ where
     /// The sensor must be powered on before calling this function.
     pub fn check_status(&self) {
         self.sensor.check_status();
+    }
+
+    pub unsafe fn inner_sensor(&self) -> *mut acc_sensor_t {
+        self.sensor.inner()
     }
 }
 

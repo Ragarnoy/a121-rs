@@ -12,9 +12,7 @@ embedded-hal-async = "1.0.0"
 embassy-sync = { git = "https://github.com/embassy-rs/embassy", features = [ "defmt" ] }
 
 tinyrlibc = { version = "*", git = "https://github.com/rust-embedded-community/tinyrlibc", features = ["snprintf", "alloc"], default-features = false }
-talc = { version = "4.2", default-features = false, features = ["lock_api"] }
-num = { version = "0.4", default-features = false }
-spin = "0.9.8"
+num = { version = "0.4", default-features = false, features = ["libm"]}
 
 [build-dependencies]
 bindgen = "0.69"
