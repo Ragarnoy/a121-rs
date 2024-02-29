@@ -1,2 +1,4 @@
+#[cfg(feature = "distance")]
 pub mod distance;
-mod presence;
+#[cfg(feature = "presence")]
+pub mod presence;

@@ -18,6 +18,10 @@ num = { version = "0.4", default-features = false, features = ["libm"]}
 bindgen = "0.69"
 cc = "1.0"
 
+[features]
+distance = []
+presence = []
+
 [profile.dev]
 lto = true
 codegen-units = 1
