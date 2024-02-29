@@ -78,7 +78,7 @@ impl RadarDistanceConfig {
         config.set_reflector_shape(ReflectorShape::Generic);
         config.set_peak_sorting_method(PeakSortingMethod::Strength);
         config.set_threshold_method(ThresholdMethod::Cfar);
-        config.set_threshold_sensitivity(0.75);
+        config.set_threshold_sensitivity(0.5);
         config.set_signal_quality(15.0);
         config.set_close_range_leakage_cancelation(false);
         config
