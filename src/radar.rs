@@ -17,6 +17,9 @@ use crate::sensor::data::RadarData;
 use crate::sensor::error::SensorError;
 use crate::sensor::Sensor;
 
+pub type TransitionResult<STATEOK, STATERR, SINT, ENABLE, DLY> =
+    Result<Radar<STATEOK, SINT, ENABLE, DLY>, TransitionError<STATERR, SINT, ENABLE, DLY>>;
+
 pub struct Enabled;
 pub struct Ready;
 pub struct Hibernating;
@@ -152,7 +155,7 @@ where
     pub fn prepare_sensor(
         mut self,
         calibration_result: &mut CalibrationResult,
-    ) -> Result<Radar<Ready, SINT, ENABLE, DLY>, TransitionError<Enabled, SINT, ENABLE, DLY>> {
+    ) -> TransitionResult<Ready, Enabled, SINT, ENABLE, DLY> {
         let mut buf = [0u8; 2560];
         if self
             .sensor
@@ -183,10 +186,7 @@ where
     ENABLE: OutputPin,
     DLY: DelayNs,
 {
-    pub fn hibernate_off(
-        self,
-    ) -> Result<Radar<Ready, SINT, ENABLE, DLY>, TransitionError<Hibernating, SINT, ENABLE, DLY>>
-    {
+    pub fn hibernate_off(self) -> TransitionResult<Ready, Hibernating, SINT, ENABLE, DLY> {
         if self.sensor.hibernate_off().is_ok() {
             Ok(Radar {
                 id: self.id,
@@ -225,10 +225,7 @@ where
         }
     }
 
-    pub fn hibernate_on(
-        mut self,
-    ) -> Result<Radar<Hibernating, SINT, ENABLE, DLY>, TransitionError<Ready, SINT, ENABLE, DLY>>
-    {
+    pub fn hibernate_on(mut self) -> TransitionResult<Hibernating, Ready, SINT, ENABLE, DLY> {
         if self.sensor.hibernate_on().is_ok() {
             Ok(Radar {
                 id: self.id,
