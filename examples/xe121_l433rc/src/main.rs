@@ -3,8 +3,6 @@
 
 use core::cell::RefCell;
 
-use a121_rs::config::prf::PulseRepetitionFrequency::Prf15_6Mhz;
-use a121_rs::config::profile::RadarProfile::AccProfile2;
 use a121_rs::detector::distance::RadarDistanceDetector;
 use a121_rs::radar;
 use a121_rs::radar::Radar;
@@ -50,7 +48,7 @@ async fn main(spawner: Spawner) {
     info!("Starting");
     let p = embassy_stm32::init(xm125_clock_config());
 
-    let mut enable = Output::new(p.PC2, Level::Low, Speed::VeryHigh); // ENABLE on PB12
+    let enable = Output::new(p.PC2, Level::Low, Speed::VeryHigh);
     let cs_pin = Output::new(p.PA11, Level::High, Speed::VeryHigh);
     let _sel0 = Output::new(p.PC3, Level::Low, Speed::VeryHigh);
     let _sel1 = Output::new(p.PA1, Level::Low, Speed::VeryHigh);
@@ -76,9 +74,6 @@ async fn main(spawner: Spawner) {
 
     unsafe { SPI_DEVICE = Some(RefCell::new(SpiAdapter::new(exclusive_device))) };
     let spi_mut_ref = unsafe { SPI_DEVICE.as_mut().unwrap() };
-
-    enable.set_high();
-    Timer::after(Duration::from_millis(2)).await;
 
     info!("RSS Version: {}", rss_version());
 

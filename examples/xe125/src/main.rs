@@ -18,7 +18,9 @@ use embassy_stm32::spi::{Config, Spi};
 use embassy_stm32::time::Hertz;
 use embassy_time::{Delay, Duration, Timer};
 use embedded_hal_bus::spi::ExclusiveDevice;
+use num::complex::Complex32;
 use radar::rss_version;
+use talc::{ClaimOnOom, Span, Talc, Talck};
 #[allow(unused_imports)]
 use {defmt_rtt as _, panic_probe as _};
 
@@ -26,12 +28,22 @@ use crate::adapter::SpiAdapter;
 
 mod adapter;
 
+static mut ARENA: [u8; 10000] = [0; 10000];
+
+#[global_allocator]
+static ALLOCATOR: Talck<spin::Mutex<()>, ClaimOnOom> = Talc::new(unsafe {
+    // if we're in a hosted environment, the Rust runtime may allocate before
+    // main() is called, so we need to initialize the arena automatically
+    ClaimOnOom::new(Span::from_const_array(core::ptr::addr_of!(ARENA)))
+})
+.lock();
+
 type SpiDeviceMutex =
     ExclusiveDevice<Spi<'static, SPI1, DMA2_CH3, DMA2_CH2>, Output<'static, PB0>, Delay>;
 static mut SPI_DEVICE: Option<RefCell<SpiAdapter<SpiDeviceMutex>>> = None;
 
 #[embassy_executor::main]
-async fn main(spawner: Spawner) {
+async fn main(_spawner: Spawner) {
     info!("Starting");
     let p = embassy_stm32::init(xm125_clock_config());
 
@@ -56,9 +68,6 @@ async fn main(spawner: Spawner) {
     unsafe { SPI_DEVICE = Some(RefCell::new(SpiAdapter::new(exclusive_device))) };
     let spi_mut_ref = unsafe { SPI_DEVICE.as_mut().unwrap() };
 
-    enable.set_high();
-    Timer::after(Duration::from_millis(2)).await;
-
     info!("RSS Version: {}", rss_version());
 
     let mut radar = Radar::new(1, spi_mut_ref.get_mut(), interrupt, enable, Delay).await;
@@ -82,7 +91,7 @@ async fn main(spawner: Spawner) {
     info!("Calibration complete!");
     let mut radar = radar.prepare_sensor(&mut calibration).unwrap();
     let mut distance = RadarDistanceDetector::new(&mut radar);
-    let mut buffer = [0u8; 2560 * 3];
+    let mut buffer = [0u8; 5700];
     let mut static_call_result = [0u8; 2560];
     let mut dynamic_call_result = distance
         .calibrate_detector(&calibration, &mut buffer, &mut static_call_result)
@@ -175,4 +184,39 @@ pub extern "C" fn __hardfp_roundf(f: f32) -> f32 {
 #[no_mangle]
 pub extern "C" fn __hardfp_sqrtf(f: f32) -> f32 {
     libm::sqrtf(f)
+}
+
+#[no_mangle]
+pub extern "C" fn __hardfp_powf(f: f32, g: f32) -> f32 {
+    libm::powf(f, g)
+}
+
+#[no_mangle]
+pub extern "C" fn __hardfp_cexpf(f: Complex32) -> Complex32 {
+    f.exp()
+}
+
+#[no_mangle]
+pub extern "C" fn __hardfp_cabsf(f: f32) -> f32 {
+    libm::fabsf(f)
+}
+
+#[no_mangle]
+pub extern "C" fn __hardfp_atanf(f: f32) -> f32 {
+    libm::atanf(f)
+}
+
+#[no_mangle]
+pub extern "C" fn __hardfp_floorf(f: f32) -> f32 {
+    libm::floorf(f)
+}
+
+#[no_mangle]
+pub extern "C" fn __hardfp_log10f(f: f32) -> f32 {
+    libm::log10f(f)
+}
+
+#[no_mangle]
+pub extern "C" fn __hardfp_exp2f(f: f32) -> f32 {
+    libm::exp2f(f)
 }
