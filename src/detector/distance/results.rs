@@ -1,9 +1,11 @@
 use crate::config::RadarConfig;
+use crate::detector::distance::InnerRadarDistanceDetector;
 use crate::processing::metadata::ProcessingMetaData;
 use crate::processing::ProcessingResult;
 use crate::rss_bindings::{
-    acc_detector_cal_result_dynamic_t, acc_detector_distance_result_t,
-    ACC_DETECTOR_CAL_RESULT_DYNAMIC_DATA_SIZE, ACC_DETECTOR_DISTANCE_RESULT_MAX_NUM_DISTANCES,
+    acc_detector_cal_result_dynamic_t, acc_detector_distance_get_sizes,
+    acc_detector_distance_result_t, ACC_DETECTOR_CAL_RESULT_DYNAMIC_DATA_SIZE,
+    ACC_DETECTOR_DISTANCE_RESULT_MAX_NUM_DISTANCES,
 };
 
 #[derive(Debug, Copy, Clone, defmt::Format)]
@@ -111,6 +113,31 @@ impl Default for DynamicResult {
             inner: acc_detector_cal_result_dynamic_t {
                 data: [0; ACC_DETECTOR_CAL_RESULT_DYNAMIC_DATA_SIZE as usize],
             },
+        }
+    }
+}
+
+#[derive(Debug, defmt::Format)]
+pub(super) struct DistanceSizes {
+    pub buffer_size: usize,
+    pub detector_cal_result_static_size: usize,
+}
+
+impl DistanceSizes {
+    pub fn new(handle: &InnerRadarDistanceDetector) -> Self {
+        let mut buffer_size: u32 = 0;
+        let mut detector_cal_result_static_size: u32 = 0;
+
+        unsafe {
+            acc_detector_distance_get_sizes(
+                handle.inner(),
+                &mut buffer_size as *mut u32,
+                &mut detector_cal_result_static_size as *mut u32,
+            );
+        }
+        Self {
+            buffer_size: buffer_size as usize,
+            detector_cal_result_static_size: detector_cal_result_static_size as usize,
         }
     }
 }

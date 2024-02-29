@@ -2,7 +2,7 @@ pub mod config;
 pub mod results;
 
 use crate::detector::distance::config::RadarDistanceConfig;
-use crate::detector::distance::results::ProcessDataError;
+use crate::detector::distance::results::{DistanceSizes, ProcessDataError};
 use crate::radar::{Radar, Ready};
 use crate::rss_bindings::*;
 use crate::sensor::calibration::CalibrationResult;
@@ -14,31 +14,6 @@ use embedded_hal::digital::OutputPin;
 use embedded_hal_async::delay::DelayNs;
 use embedded_hal_async::digital::Wait;
 use results::{DistanceResult, DynamicResult};
-
-#[derive(Debug, defmt::Format)]
-struct DistanceSizes {
-    pub buffer_size: usize,
-    pub detector_cal_result_static_size: usize,
-}
-
-impl DistanceSizes {
-    pub fn new(handle: &InnerRadarDistanceDetector) -> Self {
-        let mut buffer_size: u32 = 0;
-        let mut detector_cal_result_static_size: u32 = 0;
-
-        unsafe {
-            acc_detector_distance_get_sizes(
-                handle.inner(),
-                &mut buffer_size as *mut u32,
-                &mut detector_cal_result_static_size as *mut u32,
-            );
-        }
-        Self {
-            buffer_size: buffer_size as usize,
-            detector_cal_result_static_size: detector_cal_result_static_size as usize,
-        }
-    }
-}
 
 struct InnerRadarDistanceDetector {
     inner: *mut acc_detector_distance_handle,
