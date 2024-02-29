@@ -77,7 +77,7 @@ impl RadarDistanceConfig {
         config.set_max_profile(AccProfile5);
         config.set_reflector_shape(ReflectorShape::Generic);
         config.set_peak_sorting_method(PeakSortingMethod::Strength);
-        config.set_threshold_method(ThresholdMethod::Cfar);
+        config.set_threshold_method(ThresholdMethod::Recorded(100));
         config.set_threshold_sensitivity(0.5);
         config.set_signal_quality(15.0);
         config.set_close_range_leakage_cancelation(false);
@@ -159,7 +159,6 @@ impl RadarDistanceConfig {
             },
             ThresholdMethod::Cfar => unsafe {
                 acc_detector_distance_config_threshold_method_set(self.inner, acc_detector_distance_threshold_method_t_ACC_DETECTOR_DISTANCE_THRESHOLD_METHOD_CFAR);
-                acc_detector_distance_config_num_frames_recorded_threshold_set(self.inner, 100)
             },
         }
     }
