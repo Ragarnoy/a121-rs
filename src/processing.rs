@@ -10,7 +10,7 @@ use crate::rss_bindings::{
 };
 use crate::sensor::data::RadarData;
 
-mod metadata;
+pub mod metadata;
 
 pub struct ProcessingResult {
     inner: acc_processing_result_t,

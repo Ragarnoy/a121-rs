@@ -3,6 +3,7 @@
 
 use core::cell::RefCell;
 
+use a121_rs::detector::distance::RadarDistanceDetector;
 use a121_rs::radar;
 use a121_rs::radar::Radar;
 use defmt::{info, warn};
@@ -17,13 +18,25 @@ use embassy_stm32::spi::{Config, Spi};
 use embassy_stm32::time::Hertz;
 use embassy_time::{Delay, Duration, Timer};
 use embedded_hal_bus::spi::ExclusiveDevice;
+use num::complex::Complex32;
 use radar::rss_version;
+use talc::{ClaimOnOom, Span, Talc, Talck};
 #[allow(unused_imports)]
 use {defmt_rtt as _, panic_probe as _};
 
 use crate::adapter::SpiAdapter;
 
 mod adapter;
+
+static mut ARENA: [u8; 10000] = [0; 10000];
+
+#[global_allocator]
+static ALLOCATOR: Talck<spin::Mutex<()>, ClaimOnOom> = Talc::new(unsafe {
+    // if we're in a hosted environment, the Rust runtime may allocate before
+    // main() is called, so we need to initialize the arena automatically
+    ClaimOnOom::new(Span::from_const_array(core::ptr::addr_of!(ARENA)))
+})
+.lock();
 
 type SpiDeviceMutex =
     ExclusiveDevice<Spi<'static, SPI1, DMA2_CH3, DMA2_CH2>, Output<'static, PB0>, Delay>;
@@ -34,7 +47,7 @@ async fn main(_spawner: Spawner) {
     info!("Starting");
     let p = embassy_stm32::init(xm125_clock_config());
 
-    let mut enable = Output::new(p.PB12, Level::Low, Speed::VeryHigh); // ENABLE on PB12
+    let enable = Output::new(p.PB12, Level::Low, Speed::VeryHigh); // ENABLE on PB12
     let cs_pin = Output::new(p.PB0, Level::High, Speed::VeryHigh);
     let input = Input::new(p.PB3, Pull::Up);
     let interrupt = ExtiInput::new(input, p.EXTI3); // INTERRUPT on PB3 used as 'ready' signal
@@ -55,24 +68,20 @@ async fn main(_spawner: Spawner) {
     unsafe { SPI_DEVICE = Some(RefCell::new(SpiAdapter::new(exclusive_device))) };
     let spi_mut_ref = unsafe { SPI_DEVICE.as_mut().unwrap() };
 
-    enable.set_high();
-    Timer::after(Duration::from_millis(2)).await;
-
     info!("RSS Version: {}", rss_version());
 
-    let mut radar = Radar::new(1, spi_mut_ref.get_mut(), interrupt);
+    let mut radar = Radar::new(1, spi_mut_ref.get_mut(), interrupt, enable, Delay).await;
     info!("Radar enabled");
     let mut buffer = [0u8; 2560];
-    let mut radar = loop {
+    let mut calibration = loop {
         buffer.fill(0);
-        if let Ok(mut calibration) = radar.calibrate().await {
+        if let Ok(calibration) = radar.calibrate().await {
             if let Ok(()) = calibration.validate_calibration() {
                 info!("Calibration is valid");
-                break radar.prepare_sensor(&mut calibration).unwrap();
+                break calibration;
             } else {
                 warn!("Calibration is invalid");
                 warn!("Calibration result: {:?}", calibration);
-                enable.set_low();
             }
         } else {
             warn!("Calibration failed");
@@ -80,11 +89,48 @@ async fn main(_spawner: Spawner) {
         Timer::after(Duration::from_millis(1)).await;
     };
     info!("Calibration complete!");
+    let mut radar = radar.prepare_sensor(&mut calibration).unwrap();
+    let mut distance = RadarDistanceDetector::new(&mut radar);
+    let mut buffer = [0u8; 6056];
+    let mut static_call_result = [0u8; 1024];
+    let mut dynamic_call_result = distance
+        .calibrate_detector(&calibration, &mut buffer, &mut static_call_result)
+        .await
+        .unwrap();
 
     loop {
         Timer::after(Duration::from_millis(200)).await;
-        let data = radar.measure().await.unwrap();
-        info!("Data: {:?}", data);
+        'inner: loop {
+            distance
+                .prepare_detector(&calibration, &mut buffer)
+                .unwrap();
+            distance.measure().await.unwrap();
+
+            if let Ok(res) = distance.process_data(
+                &mut buffer,
+                &mut static_call_result,
+                &mut dynamic_call_result,
+            ) {
+                if res.num_distances() > 0 {
+                    info!(
+                        "{} Distances found:\n{:?}",
+                        res.num_distances(),
+                        res.distances()
+                    );
+                }
+                if res.calibration_needed() {
+                    info!("Calibration needed");
+                    break 'inner;
+                }
+            } else {
+                warn!("Failed to process data");
+            }
+        }
+        let calibration = distance.calibrate().await.unwrap();
+        dynamic_call_result = distance
+            .update_calibration(&calibration, &mut buffer)
+            .await
+            .unwrap();
     }
 }
 
@@ -138,4 +184,39 @@ pub extern "C" fn __hardfp_roundf(f: f32) -> f32 {
 #[no_mangle]
 pub extern "C" fn __hardfp_sqrtf(f: f32) -> f32 {
     libm::sqrtf(f)
+}
+
+#[no_mangle]
+pub extern "C" fn __hardfp_powf(f: f32, g: f32) -> f32 {
+    libm::powf(f, g)
+}
+
+#[no_mangle]
+pub extern "C" fn __hardfp_cexpf(f: Complex32) -> Complex32 {
+    f.exp()
+}
+
+#[no_mangle]
+pub extern "C" fn __hardfp_cabsf(f: f32) -> f32 {
+    libm::fabsf(f)
+}
+
+#[no_mangle]
+pub extern "C" fn __hardfp_atanf(f: f32) -> f32 {
+    libm::atanf(f)
+}
+
+#[no_mangle]
+pub extern "C" fn __hardfp_floorf(f: f32) -> f32 {
+    libm::floorf(f)
+}
+
+#[no_mangle]
+pub extern "C" fn __hardfp_log10f(f: f32) -> f32 {
+    libm::log10f(f)
+}
+
+#[no_mangle]
+pub extern "C" fn __hardfp_exp2f(f: f32) -> f32 {
+    libm::exp2f(f)
 }

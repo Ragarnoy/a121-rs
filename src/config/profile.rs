@@ -1,8 +1,10 @@
+use crate::rss_bindings::acc_config_profile_t_ACC_CONFIG_PROFILE_1;
+
 #[derive(Debug, PartialEq, defmt::Format)]
 /// Radar profiles indicating different settings for the sensor's RX and TX paths.
 pub enum RadarProfile {
     /// Profile 1
-    AccProfile1 = 1,
+    AccProfile1 = acc_config_profile_t_ACC_CONFIG_PROFILE_1 as isize,
     /// Profile 2
     AccProfile2,
     /// Profile 3
