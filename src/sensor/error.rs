@@ -9,4 +9,6 @@ pub enum SensorError {
     CalibrationInvalid,
     NotReady,
     CalibrationInfo,
+    ResultNotAvailable,
+    ProcessingFailed,
 }

@@ -14,8 +14,6 @@ dependencies = [
  "embedded-hal 1.0.0",
  "embedded-hal-async",
  "num",
- "spin",
- "talc",
  "tinyrlibc",
 ]
 
@@ -850,6 +848,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "da0df0e5185db44f69b44f26786fe401b6c293d1907744beaa7fa62b2e5a517a"
 dependencies = [
  "autocfg",
+ "libm",
 ]
 
 [[package]]
@@ -1336,6 +1335,9 @@ dependencies = [
  "embedded-hal 1.0.0",
  "embedded-hal-bus",
  "libm",
+ "num",
  "panic-probe",
+ "spin",
  "static_cell",
+ "talc",
 ]

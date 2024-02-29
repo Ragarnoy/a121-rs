@@ -1,54 +1,82 @@
 use core::fmt::{Debug, Display, Formatter};
 use core::marker::PhantomData;
+use embedded_hal::digital::OutputPin;
 
 use embedded_hal::spi::{ErrorKind as SpiErrorKind, SpiDevice};
+use embedded_hal_async::delay::DelayNs;
 use embedded_hal_async::digital::Wait;
 
 use crate::config::RadarConfig;
 use crate::hal::AccHalImpl;
 use crate::processing::Processing;
-use crate::rss_bindings::{acc_sensor_connected, acc_sensor_id_t, acc_version_get_hex};
+use crate::rss_bindings::{
+    acc_sensor_connected, acc_sensor_id_t, acc_sensor_t, acc_version_get_hex,
+};
 use crate::sensor::calibration::CalibrationResult;
 use crate::sensor::data::RadarData;
 use crate::sensor::error::SensorError;
 use crate::sensor::Sensor;
 
+pub type TransitionResult<STATEOK, STATERR, SINT, ENABLE, DLY> =
+    Result<Radar<STATEOK, SINT, ENABLE, DLY>, TransitionError<STATERR, SINT, ENABLE, DLY>>;
+
 pub struct Enabled;
 pub struct Ready;
 pub struct Hibernating;
 
-trait RadarState {}
+pub trait RadarState {}
 
 impl RadarState for Enabled {}
 impl RadarState for Ready {}
 impl RadarState for Hibernating {}
 
-pub struct TransitionError<STATE, SINT: Wait> {
-    pub radar: Radar<STATE, SINT>,
+pub struct TransitionError<STATE, SINT, ENABLE, DLY>
+where
+    SINT: Wait,
+    STATE: RadarState,
+    ENABLE: OutputPin,
+    DLY: DelayNs,
+{
+    pub radar: Radar<STATE, SINT, ENABLE, DLY>,
     error: SensorError,
 }
 
-impl<S, SINT: Wait> Debug for TransitionError<S, SINT> {
+impl<STATE, SINT, ENABLE, DLY> Debug for TransitionError<STATE, SINT, ENABLE, DLY>
+where
+    SINT: Wait,
+    STATE: RadarState,
+    ENABLE: OutputPin,
+    DLY: DelayNs,
+{
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         write!(f, "TransitionError: {:?}", self.error)
     }
 }
 
-impl<S, SINT: Wait> From<TransitionError<S, SINT>> for SensorError {
-    fn from(e: TransitionError<S, SINT>) -> Self {
+impl<STATE, SINT, ENABLE, DLY> From<TransitionError<STATE, SINT, ENABLE, DLY>> for SensorError
+where
+    SINT: Wait,
+    STATE: RadarState,
+    ENABLE: OutputPin,
+    DLY: DelayNs,
+{
+    fn from(e: TransitionError<STATE, SINT, ENABLE, DLY>) -> Self {
         e.error
     }
 }
 
-pub struct Radar<STATE, SINT>
+pub struct Radar<STATE, SINT, ENABLE, DLY>
 where
     SINT: Wait,
+    STATE: RadarState,
+    ENABLE: OutputPin,
+    DLY: DelayNs,
 {
     id: u32,
     pub config: RadarConfig,
-    sensor: Sensor,
+    sensor: Sensor<ENABLE, DLY>,
     pub processing: Processing,
-    interrupt: SINT,
+    pub(crate) interrupt: SINT,
     _hal: AccHalImpl,
     _state: PhantomData<STATE>,
 }
@@ -90,18 +118,28 @@ impl RssVersion {
     }
 }
 
-impl<SINT> Radar<Enabled, SINT>
+impl<SINT, ENABLE, DLY> Radar<Enabled, SINT, ENABLE, DLY>
 where
     SINT: Wait,
+    ENABLE: OutputPin,
+    DLY: DelayNs,
 {
-    pub fn new<SPI>(id: u32, spi: &'static mut SPI, interrupt: SINT) -> Radar<Enabled, SINT>
+    pub async fn new<SPI>(
+        id: u32,
+        spi: &'static mut SPI,
+        interrupt: SINT,
+        mut enable_pin: ENABLE,
+        mut delay: DLY,
+    ) -> Radar<Enabled, SINT, ENABLE, DLY>
     where
         SPI: SpiDevice<u8, Error = SpiErrorKind> + Send + 'static,
     {
+        enable_pin.set_high().unwrap();
+        delay.delay_ms(2).await;
         let hal = AccHalImpl::new(spi);
         hal.register();
         let config = RadarConfig::default();
-        let sensor = Sensor::new(id).expect("Failed to create sensor");
+        let sensor = Sensor::new(id, enable_pin, delay).expect("Failed to create sensor");
         let processing = Processing::new(&config);
         Self {
             id,
@@ -117,7 +155,7 @@ where
     pub fn prepare_sensor(
         mut self,
         calibration_result: &mut CalibrationResult,
-    ) -> Result<Radar<Ready, SINT>, TransitionError<Enabled, SINT>> {
+    ) -> TransitionResult<Ready, Enabled, SINT, ENABLE, DLY> {
         let mut buf = [0u8; 2560];
         if self
             .sensor
@@ -142,8 +180,13 @@ where
     }
 }
 
-impl<SINT: Wait> Radar<Hibernating, SINT> {
-    pub fn hibernate_off(self) -> Result<Radar<Ready, SINT>, TransitionError<Hibernating, SINT>> {
+impl<SINT, ENABLE, DLY> Radar<Hibernating, SINT, ENABLE, DLY>
+where
+    SINT: Wait,
+    ENABLE: OutputPin,
+    DLY: DelayNs,
+{
+    pub fn hibernate_off(self) -> TransitionResult<Ready, Hibernating, SINT, ENABLE, DLY> {
         if self.sensor.hibernate_off().is_ok() {
             Ok(Radar {
                 id: self.id,
@@ -163,7 +206,12 @@ impl<SINT: Wait> Radar<Hibernating, SINT> {
     }
 }
 
-impl<SINT: Wait> Radar<Ready, SINT> {
+impl<SINT, ENABLE, DLY> Radar<Ready, SINT, ENABLE, DLY>
+where
+    SINT: Wait,
+    ENABLE: OutputPin,
+    DLY: DelayNs,
+{
     pub async fn measure<'a>(&mut self) -> Result<RadarData, SensorError> {
         if (self.sensor.measure(&mut self.interrupt).await).is_ok() {
             let mut data = RadarData::new();
@@ -177,9 +225,7 @@ impl<SINT: Wait> Radar<Ready, SINT> {
         }
     }
 
-    pub fn hibernate_on(
-        mut self,
-    ) -> Result<Radar<Hibernating, SINT>, TransitionError<Ready, SINT>> {
+    pub fn hibernate_on(mut self) -> TransitionResult<Hibernating, Ready, SINT, ENABLE, DLY> {
         if self.sensor.hibernate_on().is_ok() {
             Ok(Radar {
                 id: self.id,
@@ -199,17 +245,24 @@ impl<SINT: Wait> Radar<Ready, SINT> {
     }
 }
 
-impl<STATE, SINT> Radar<STATE, SINT>
+impl<STATE, SINT, ENABLE, DLY> Radar<STATE, SINT, ENABLE, DLY>
 where
     SINT: Wait,
+    STATE: RadarState,
+    ENABLE: OutputPin,
+    DLY: DelayNs,
 {
     pub fn id(&self) -> u32 {
         self.id
     }
 
     pub async fn calibrate(&mut self) -> Result<CalibrationResult, SensorError> {
-        let mut buf = [0u8; 2560];
+        let mut buf = [0u8; 5560];
         self.sensor.calibrate(&mut self.interrupt, &mut buf).await
+    }
+
+    pub async fn reset_sensor(&mut self) {
+        self.sensor.reset_sensor().await;
     }
 
     /// Checks if a sensor is connected and responsive.
@@ -230,6 +283,13 @@ where
     /// The sensor must be powered on before calling this function.
     pub fn check_status(&self) {
         self.sensor.check_status();
+    }
+
+    /// Get a mutable reference to the sensor
+    /// # Safety
+    /// This function is unsafe because it returns a mutable reference to the sensor, which is a raw pointer
+    pub unsafe fn inner_sensor(&self) -> *mut acc_sensor_t {
+        self.sensor.inner()
     }
 }
 

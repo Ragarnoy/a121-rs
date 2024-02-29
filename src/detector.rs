@@ -1,2 +1,2 @@
-mod distance;
+pub mod distance;
 mod presence;

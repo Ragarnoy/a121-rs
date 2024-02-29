@@ -21,6 +21,7 @@ fn main() {
 
     println!("cargo:rustc-link-search={}", lib.display());
     println!("cargo:rustc-link-lib=static=acconeer_a121");
+    println!("cargo:rustc-link-lib=static=acc_detector_distance_a121");
     println!(
         "cargo:rerun-if-changed={}",
         xmpath.join("include").display()
