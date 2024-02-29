@@ -82,7 +82,7 @@ async fn main(spawner: Spawner) {
 
     info!("RSS Version: {}", rss_version());
 
-    let mut radar = Radar::new(1, spi_mut_ref.get_mut(), interrupt);
+    let mut radar = Radar::new(1, spi_mut_ref.get_mut(), interrupt, enable, Delay).await;
     radar.config.set_profile(AccProfile2);
     radar.config.set_prf(Prf15_6Mhz);
     info!("Radar enabled");
@@ -96,7 +96,6 @@ async fn main(spawner: Spawner) {
             } else {
                 warn!("Calibration is invalid");
                 warn!("Calibration result: {:?}", calibration);
-                enable.set_low();
             }
         } else {
             warn!("Calibration failed");
@@ -143,9 +142,6 @@ async fn main(spawner: Spawner) {
                 warn!("Failed to process data");
             }
         }
-        enable.set_low();
-        enable.set_high();
-        Timer::after(Duration::from_millis(2)).await;
         let calibration = distance.calibrate().await.unwrap();
         dynamic_call_result = distance
             .update_calibration(&calibration, &mut buffer)
