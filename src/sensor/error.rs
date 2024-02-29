@@ -1,10 +1,11 @@
 #[derive(Debug, Copy, Clone, defmt::Format)]
 pub enum SensorError {
-    FailedCalibration,
-    FailedPrepare,
+    CalibrationFailed,
+    PrepareFailed,
     MeasurementError,
     ReadError,
-    FailedHibernate,
+    HibernationOffFailed,
+    HibernationOnFailed,
     CalibrationInvalid,
     NotReady,
     CalibrationInfo,

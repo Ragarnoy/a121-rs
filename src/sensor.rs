@@ -1,6 +1,5 @@
 use core::ffi::c_void;
-use core::fmt::{Debug, Formatter};
-use core::marker::PhantomData;
+
 use core::ops::{Deref, DerefMut};
 use defmt::trace;
 
@@ -16,28 +15,6 @@ use crate::rss_bindings::*;
 pub mod calibration;
 pub mod data;
 pub mod error;
-
-pub struct Disabled;
-pub struct Enabled;
-pub struct Ready;
-pub struct Hibernating;
-
-pub struct TransitionError<S, SINT: Wait> {
-    pub sensor: Sensor<S, SINT>,
-    error: SensorError,
-}
-
-impl<S, SINT: Wait> Debug for TransitionError<S, SINT> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        write!(f, "TransitionError: {:?}", self.error)
-    }
-}
-
-impl<SINT: Wait> TransitionError<Enabled, SINT> {
-    pub fn error(&self) -> SensorError {
-        self.error
-    }
-}
 
 struct InnerSensor {
     inner: *mut acc_sensor_t,
@@ -76,26 +53,11 @@ impl DerefMut for InnerSensor {
     }
 }
 
-pub struct Sensor<S, SINT: Wait> {
+pub(super) struct Sensor {
     inner: InnerSensor,
-    interrupt: SINT,
-    sensor_id: u32,
-    prepared: bool,
-    calibrated: bool,
-    _state: PhantomData<S>,
 }
 
-impl<S, SINT: Wait> Sensor<S, SINT> {
-    pub fn sensor_id(&self) -> u32 {
-        self.sensor_id
-    }
-
-    pub fn status(&self) {
-        unsafe { acc_sensor_status(self.inner.deref()) }
-    }
-}
-
-impl<SINT: Wait> Sensor<Disabled, SINT> {
+impl Sensor {
     /// Creates a new sensor instance for the given sensor ID.
     ///
     /// A sensor instance represents a physical radar sensor and handles communication with it.
@@ -106,49 +68,10 @@ impl<SINT: Wait> Sensor<Disabled, SINT> {
     ///
     /// # Returns
     /// `Some(Sensor)` if the sensor instance was successfully created, `None` otherwise.
-    pub fn new(sensor_id: u32, interrupt: SINT) -> Option<Self> {
+    pub fn new(sensor_id: u32) -> Option<Self> {
         trace!("Creating sensor {}", sensor_id);
         let inner = InnerSensor::new(sensor_id)?;
-        Some(Self {
-            inner,
-            interrupt,
-            sensor_id,
-            _state: PhantomData,
-            prepared: false,
-            calibrated: false,
-        })
-    }
-
-    /// Enable the sensor.
-    ///
-    /// This function enables the sensor and resets the internal state of the sensor instance.
-    /// The sensor must be powered on before calling this function.
-    pub fn enable(self) -> Sensor<Enabled, SINT> {
-        Sensor {
-            inner: self.inner,
-            interrupt: self.interrupt,
-            sensor_id: self.sensor_id,
-            _state: PhantomData,
-            prepared: false,
-            calibrated: false,
-        }
-    }
-}
-
-impl<SINT: Wait> Sensor<Enabled, SINT> {
-    /// Disable the sensor.
-    ///
-    /// This function disables the sensor and resets the internal state of the sensor instance.
-    /// The sensor must be powered on before calling this function.
-    pub fn disable(self) -> Sensor<Disabled, SINT> {
-        Sensor {
-            inner: self.inner,
-            interrupt: self.interrupt,
-            sensor_id: self.sensor_id,
-            _state: PhantomData,
-            prepared: false,
-            calibrated: false,
-        }
+        Some(Self { inner })
     }
 
     /// Calibrates the sensor asynchronously.
@@ -168,19 +91,17 @@ impl<SINT: Wait> Sensor<Enabled, SINT> {
     ///
     /// # Returns
     /// `Ok(CalibrationResult)` containing the result of the calibration if the calibration step
-    /// was successful. The calibration might still be ongoing, requiring additional calls to
-    /// `calibrate`. If the calibration step fails, returns `Err(SensorError::FailedCalibration)`.
-    ///
-    /// # Usage
-    /// This function should be called in an asynchronous context and awaited.
-    /// The caller should check the status of the `CalibrationResult`
-    /// to determine if additional calibration steps are required.
-    pub async fn calibrate(&mut self, buffer: &mut [u8]) -> Result<CalibrationResult, SensorError> {
+    /// was successful.
+    /// If the calibration step fails, returns `Err(SensorError::FailedCalibration)`.
+    pub async fn calibrate<SINT: Wait>(
+        &mut self,
+        interrupt: &mut SINT,
+        buffer: &mut [u8],
+    ) -> Result<CalibrationResult, SensorError> {
         let mut calibration_complete: bool = false;
         let mut calibration_result = CalibrationResult::new();
         let calibration_attempt: bool;
 
-        self.calibrated = false;
         unsafe {
             // Start the calibration process
             calibration_attempt = acc_sensor_calibrate(
@@ -194,7 +115,7 @@ impl<SINT: Wait> Sensor<Enabled, SINT> {
         if calibration_attempt {
             while !calibration_complete {
                 // Wait for the interrupt to occur asynchronously
-                self.interrupt
+                interrupt
                     .wait_for_high()
                     .await
                     .expect("Failed to wait for interrupt");
@@ -209,10 +130,9 @@ impl<SINT: Wait> Sensor<Enabled, SINT> {
                 }
             }
 
-            self.calibrated = calibration_complete;
             Ok(calibration_result)
         } else {
-            Err(SensorError::FailedCalibration)
+            Err(SensorError::CalibrationFailed)
         }
     }
 
@@ -237,7 +157,6 @@ impl<SINT: Wait> Sensor<Enabled, SINT> {
         cal_result: &mut CalibrationResult,
         buffer: &mut [u8],
     ) -> Result<(), SensorError> {
-        self.prepared = false;
         let ret;
         unsafe {
             ret = acc_sensor_prepare(
@@ -249,37 +168,13 @@ impl<SINT: Wait> Sensor<Enabled, SINT> {
             );
         }
         if ret {
-            self.prepared = true;
             trace!("Sensor prepared");
             Ok(())
         } else {
-            Err(SensorError::FailedPrepare)
+            Err(SensorError::PrepareFailed)
         }
     }
 
-    /// Checks if a sensor is connected and responsive.
-    ///
-    /// Note that the sensor must be powered on before calling this function.
-    ///
-    /// # Arguments
-    ///
-    /// * `sensor_id` - The sensor ID to be used for communication.
-    ///
-    /// # Returns
-    ///
-    /// `true` if it is possible to communicate with the sensor, `false` otherwise.
-    pub fn is_connected(sensor_id: u32) -> bool {
-        unsafe { acc_sensor_connected(sensor_id as acc_sensor_id_t) }
-    }
-
-    /// Checks the status of the sensor.
-    ///
-    /// This function reads out the internal status from the sensor and can be used for
-    /// debugging purposes, such as when `acc_hal_integration_wait_for_sensor_interrupt()`
-    /// fails. The sensor must be powered on before calling this function.
-    ///
-    /// # Returns
-    /// `Ok(())` if successful, `Err(SensorStatusError)` otherwise.
     pub fn check_status(&self) {
         unsafe {
             acc_sensor_status(self.inner.deref());
@@ -292,82 +187,36 @@ impl<SINT: Wait> Sensor<Enabled, SINT> {
     ///
     /// # Returns
     /// `Ok(())` if preparation was successful, `Err(SensorHibernationError)` otherwise.
-    pub fn hibernate_on(
-        mut self,
-    ) -> Result<Sensor<Hibernating, SINT>, TransitionError<Enabled, SINT>> {
+    pub fn hibernate_on(&mut self) -> Result<(), SensorError> {
         let ret_status: bool;
         unsafe {
             ret_status = acc_sensor_hibernate_on(self.inner.deref_mut());
         }
         if ret_status {
-            Ok(Sensor {
-                inner: self.inner,
-                interrupt: self.interrupt,
-                sensor_id: self.sensor_id,
-                _state: PhantomData,
-                prepared: false,
-                calibrated: false,
-            })
+            Ok(())
         } else {
-            Err(TransitionError {
-                sensor: self,
-                error: SensorError::FailedHibernate,
-            })
+            Err(SensorError::HibernationOnFailed)
         }
     }
 
-    pub fn set_ready(self) -> Result<Sensor<Ready, SINT>, TransitionError<Enabled, SINT>> {
-        if self.prepared && self.calibrated {
-            Ok(Sensor {
-                inner: self.inner,
-                interrupt: self.interrupt,
-                sensor_id: self.sensor_id,
-                _state: PhantomData,
-                prepared: true,
-                calibrated: true,
-            })
-        } else {
-            Err(TransitionError {
-                sensor: self,
-                error: SensorError::NotReady,
-            })
-        }
-    }
-}
-
-impl<SINT: Wait> Sensor<Hibernating, SINT> {
     /// Restores the sensor after exiting hibernation.
     ///
     /// Should be invoked after calling `acc_hal_integration_sensor_enable()`.
     ///
     /// # Returns
     /// `Ok(())` if unpreparation was successful, `Err(SensorHibernationError)` otherwise.
-    pub fn hibernate_off(
-        mut self,
-    ) -> Result<Sensor<Enabled, SINT>, TransitionError<Hibernating, SINT>> {
+    pub fn hibernate_off(&self) -> Result<(), SensorError> {
         let ret_status: bool;
         unsafe {
-            ret_status = acc_sensor_hibernate_off(self.inner.deref_mut());
+            ret_status = acc_sensor_hibernate_off(self.inner.deref());
         }
         if ret_status {
-            Ok(Sensor {
-                inner: self.inner,
-                interrupt: self.interrupt,
-                sensor_id: self.sensor_id,
-                _state: PhantomData,
-                prepared: false,
-                calibrated: false,
-            })
+            Ok(())
         } else {
-            Err(TransitionError {
-                sensor: self,
-                error: SensorError::FailedHibernate,
-            })
+            Err(SensorError::HibernationOffFailed)
         }
     }
-}
 
-impl<SINT: Wait> Sensor<Ready, SINT> {
     /// Starts a radar measurement with a previously prepared configuration.
     ///
     /// This function initiates a radar measurement based on a configuration that must have been
@@ -399,10 +248,14 @@ impl<SINT: Wait> Sensor<Ready, SINT> {
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn measure(&mut self) -> Result<(), SensorError> {
+    pub async fn measure<SINT: Wait>(&mut self, mut interrupt: SINT) -> Result<(), SensorError> {
         // Implementation to start the radar measurement
         let success = unsafe { acc_sensor_measure(self.inner.deref_mut()) };
         if success {
+            interrupt
+                .wait_for_high()
+                .await
+                .expect("Failed to wait for interrupt");
             Ok(())
         } else {
             Err(SensorError::MeasurementError)
@@ -435,11 +288,11 @@ impl<SINT: Wait> Sensor<Ready, SINT> {
     /// use rad_hard_sys::sensor::error::SensorError;
     ///  async fn foo<SINT: Wait>(sensor: &mut Sensor<Ready, SINT>) -> Result<(), SensorError> {
     /// let mut data_buffer = RadarData::default();
-    /// sensor.read(&mut data_buffer).await?;
+    /// sensor.read(&mut data_buffer)?;
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn read(&self, buffer: &mut RadarData) -> Result<(), SensorError> {
+    pub fn read(&self, buffer: &mut RadarData) -> Result<(), SensorError> {
         // Implementation to read the radar data
         let success = unsafe {
             acc_sensor_read(
@@ -452,83 +305,6 @@ impl<SINT: Wait> Sensor<Ready, SINT> {
             Ok(())
         } else {
             Err(SensorError::ReadError)
-        }
-    }
-
-    /// Calibrates the sensor asynchronously.
-    ///
-    /// Initiates the calibration process for the sensor and waits asynchronously for a sensor
-    /// interrupt to indicate the completion or progress of the calibration.
-    /// The sensor must be powered on before calling this function.
-    ///
-    /// The function starts the calibration process and then waits for a sensor interrupt signal.
-    /// Upon receiving the interrupt signal, the function completes, returning the current
-    /// calibration result.
-    ///
-    /// # Arguments
-    /// * `buffer` - A buffer used during calibration. A larger buffer might reduce the number of
-    ///   transactions between the host and the sensor. The buffer is only used during the duration
-    ///   of the calibration call.
-    ///
-    /// # Returns
-    /// `Ok(CalibrationResult)` containing the result of the calibration if the calibration step
-    /// was successful. The calibration might still be ongoing, requiring additional calls to
-    /// `calibrate`. If the calibration step fails, returns `Err(SensorError::FailedCalibration)`.
-    ///
-    /// # Usage
-    /// This function should be called in an asynchronous context and awaited.
-    /// The caller should check the status of the `CalibrationResult`
-    /// to determine if additional calibration steps are required.
-    pub async fn recalibrate(
-        &mut self,
-        buffer: &mut [u8],
-    ) -> Result<CalibrationResult, SensorError> {
-        // Start the calibration process
-        let mut calibration_status: bool = false;
-        let mut calibration_result = CalibrationResult::new();
-        self.calibrated = false;
-        unsafe {
-            acc_sensor_calibrate(
-                self.inner.deref_mut(),
-                &mut calibration_status as *mut bool,
-                calibration_result.mut_ptr(),
-                buffer.as_mut_ptr() as *mut c_void,
-                buffer.len() as u32,
-            );
-        }
-
-        // Wait for the interrupt to occur asynchronously
-        self.interrupt
-            .wait_for_low()
-            .await
-            .expect("Failed to wait for interrupt");
-
-        self.calibrated = calibration_status;
-        Ok(calibration_result)
-    }
-
-    pub async fn reprepare(
-        &mut self,
-        config: &RadarConfig,
-        cal_result: &mut CalibrationResult,
-        buffer: &mut [u8],
-    ) -> Result<(), SensorError> {
-        self.prepared = false;
-        let ret;
-        unsafe {
-            ret = acc_sensor_prepare(
-                self.inner.deref_mut(),
-                config.ptr(),
-                cal_result.mut_ptr(),
-                buffer.as_mut_ptr() as *mut c_void,
-                buffer.len() as u32,
-            );
-        }
-        if ret {
-            self.prepared = true;
-            Ok(())
-        } else {
-            Err(SensorError::FailedPrepare)
         }
     }
 }

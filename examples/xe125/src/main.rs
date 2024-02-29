@@ -5,7 +5,7 @@ use core::cell::RefCell;
 
 use a121_rs::radar;
 use a121_rs::radar::Radar;
-use defmt::info;
+use defmt::{info, warn};
 use embassy_executor::Spawner;
 use embassy_stm32::exti::ExtiInput;
 use embassy_stm32::gpio::{Input, Level, Output, Pull, Speed};
@@ -56,28 +56,41 @@ async fn main(_spawner: Spawner) {
     let spi_mut_ref = unsafe { SPI_DEVICE.as_mut().unwrap() };
 
     enable.set_high();
-    Timer::after(Duration::from_millis(10)).await;
+    Timer::after(Duration::from_millis(2)).await;
 
     info!("RSS Version: {}", rss_version());
 
-    let mut radar = Radar::new(1, spi_mut_ref.get_mut(), interrupt).enable();
+    let mut radar = Radar::new(1, spi_mut_ref.get_mut(), interrupt);
     info!("Radar enabled");
-    let mut buffer = [0u8; 100];
-    let mut calibration = radar.sensor.calibrate(&mut buffer).await.unwrap();
-    radar
-        .sensor
-        .prepare(&radar.config, &mut calibration, &mut buffer)
-        .unwrap();
+    let mut buffer = [0u8; 2560];
+    let mut radar = loop {
+        buffer.fill(0);
+        if let Ok(mut calibration) = radar.calibrate().await {
+            if let Ok(()) = calibration.validate_calibration() {
+                info!("Calibration is valid");
+                break radar.prepare_sensor(&mut calibration).unwrap();
+            } else {
+                warn!("Calibration is invalid");
+                warn!("Calibration result: {:?}", calibration);
+                enable.set_low();
+            }
+        } else {
+            warn!("Calibration failed");
+        }
+        Timer::after(Duration::from_millis(1)).await;
+    };
+    info!("Calibration complete!");
 
     loop {
-        Timer::after(Duration::from_secs(1)).await;
-        info!("Hello, radar!");
+        Timer::after(Duration::from_millis(200)).await;
+        let data = radar.measure().await.unwrap();
+        info!("Data: {:?}", data);
     }
 }
 
 fn xm125_spi_config() -> Config {
     let mut spi_config = Config::default();
-    spi_config.frequency = Hertz(10_000);
+    spi_config.frequency = Hertz(1_000_000);
     spi_config
 }
 
