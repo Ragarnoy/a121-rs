@@ -1,0 +1,23 @@
+[target.xtensa-esp32s3-none-elf]
+runner = "espflash flash --monitor --log-format defmt"
+
+
+[build]
+rustflags = [
+  "-C", "link-arg=-Tlinkall.x",
+  "-C", "link-arg=-Tdefmt.x",
+
+  "-C", "link-arg=-nostartfiles",
+]
+
+target = "xtensa-esp32s3-none-elf"
+
+[unstable]
+build-std = ["core", "alloc"]
+
+[env]
+MCU="esp32s3"
+# Note: this variable is not used by the pio builder (`cargo build --features pio`)
+ESP_IDF_VERSION = "v5.1.2"
+CROSS_COMPILE="xtensa-esp32-elf"
+DEFMT_LOG="trace"
