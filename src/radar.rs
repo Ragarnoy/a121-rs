@@ -19,25 +19,29 @@ pub struct Enabled;
 pub struct Ready;
 pub struct Hibernating;
 
-trait RadarState {}
+pub trait RadarState {}
 
 impl RadarState for Enabled {}
 impl RadarState for Ready {}
 impl RadarState for Hibernating {}
 
-pub struct TransitionError<STATE, SINT: Wait> {
+pub struct TransitionError<STATE, SINT>
+where
+    SINT: Wait,
+    STATE: RadarState,
+{
     pub radar: Radar<STATE, SINT>,
     error: SensorError,
 }
 
-impl<S, SINT: Wait> Debug for TransitionError<S, SINT> {
+impl<STATE: RadarState, SINT: Wait> Debug for TransitionError<STATE, SINT> {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         write!(f, "TransitionError: {:?}", self.error)
     }
 }
 
-impl<S, SINT: Wait> From<TransitionError<S, SINT>> for SensorError {
-    fn from(e: TransitionError<S, SINT>) -> Self {
+impl<STATE: RadarState, SINT: Wait> From<TransitionError<STATE, SINT>> for SensorError {
+    fn from(e: TransitionError<STATE, SINT>) -> Self {
         e.error
     }
 }
@@ -45,6 +49,7 @@ impl<S, SINT: Wait> From<TransitionError<S, SINT>> for SensorError {
 pub struct Radar<STATE, SINT>
 where
     SINT: Wait,
+    STATE: RadarState,
 {
     id: u32,
     pub config: RadarConfig,
@@ -204,6 +209,7 @@ impl<SINT: Wait> Radar<Ready, SINT> {
 impl<STATE, SINT> Radar<STATE, SINT>
 where
     SINT: Wait,
+    STATE: RadarState,
 {
     pub fn id(&self) -> u32 {
         self.id
@@ -234,6 +240,9 @@ where
         self.sensor.check_status();
     }
 
+    /// Get a mutable reference to the sensor
+    /// # Safety
+    /// This function is unsafe because it returns a mutable reference to the sensor, which is a raw pointer
     pub unsafe fn inner_sensor(&self) -> *mut acc_sensor_t {
         self.sensor.inner()
     }
