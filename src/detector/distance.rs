@@ -49,7 +49,7 @@ where
 {
     pub radar: &'radar mut Radar<Ready, SINT, ENABLE, DLY>,
     inner: InnerRadarDistanceDetector,
-    config: RadarDistanceConfig,
+    pub config: RadarDistanceConfig,
 }
 
 impl<'radar, SINT, ENABLE, DLY> RadarDistanceDetector<'radar, SINT, ENABLE, DLY>
