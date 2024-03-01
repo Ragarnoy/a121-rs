@@ -4,6 +4,7 @@ extern crate alloc;
 
 /// Configuration for the XM125
 pub mod config;
+#[cfg(any(feature = "distance", feature = "presence"))]
 pub mod detector;
 /// Hardware Abstraction Layer for the XM125
 pub mod hal;
