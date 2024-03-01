@@ -19,6 +19,6 @@ build-std = ["core", "alloc"]
 MCU="esp32s3"
 # Note: this variable is not used by the pio builder (`cargo build --features pio`)
 ESP_IDF_VERSION = "v5.1.2"
-CROSS_COMPILE="xtensa-esp32-elf"
+CROSS_COMPILE="xtensa-esp32s3-elf"
 DEFMT_LOG="trace"
 ACC_RSS_LIBS={ value = "acc", relative = true }
