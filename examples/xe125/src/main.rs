@@ -2,6 +2,7 @@
 #![no_main]
 
 use core::cell::RefCell;
+use core::ffi::c_void;
 
 use a121_rs::detector::distance::RadarDistanceDetector;
 use a121_rs::radar;
@@ -18,7 +19,6 @@ use embassy_stm32::spi::{Config, Spi};
 use embassy_stm32::time::Hertz;
 use embassy_time::{Delay, Duration, Timer};
 use embedded_hal_bus::spi::ExclusiveDevice;
-use num::complex::Complex32;
 use radar::rss_version;
 use talc::{ClaimOnOom, Span, Talc, Talck};
 #[allow(unused_imports)]
@@ -166,57 +166,66 @@ fn xm125_clock_config() -> embassy_stm32::Config {
     config
 }
 
+unsafe extern "C" fn malloc(size: usize) -> *mut c_void {
+    tinyrlibc::malloc(size) as *mut c_void
+}
+
+unsafe extern "C" fn free(ptr: *mut c_void) {
+    let ptr = ptr as *mut u8;
+    tinyrlibc::free(ptr);
+}
+
 #[no_mangle]
-pub extern "C" fn __hardfp_cosf(f: f32) -> f32 {
+pub extern "C" fn cosf(f: f32) -> f32 {
     libm::cosf(f)
 }
 
 #[no_mangle]
-pub extern "C" fn __hardfp_sinf(f: f32) -> f32 {
+pub extern "C" fn sinf(f: f32) -> f32 {
     libm::sinf(f)
 }
 
 #[no_mangle]
-pub extern "C" fn __hardfp_roundf(f: f32) -> f32 {
+pub extern "C" fn roundf(f: f32) -> f32 {
     libm::roundf(f)
 }
 
 #[no_mangle]
-pub extern "C" fn __hardfp_sqrtf(f: f32) -> f32 {
+pub extern "C" fn sqrtf(f: f32) -> f32 {
     libm::sqrtf(f)
 }
 
 #[no_mangle]
-pub extern "C" fn __hardfp_powf(f: f32, g: f32) -> f32 {
+pub extern "C" fn powf(f: f32, g: f32) -> f32 {
     libm::powf(f, g)
 }
 
 #[no_mangle]
-pub extern "C" fn __hardfp_cexpf(f: Complex32) -> Complex32 {
-    f.exp()
+pub extern "C" fn cexpf(f: f32) -> f32 {
+    libm::expf(f)
 }
 
 #[no_mangle]
-pub extern "C" fn __hardfp_cabsf(f: f32) -> f32 {
+pub extern "C" fn cabsf(f: f32) -> f32 {
     libm::fabsf(f)
 }
 
 #[no_mangle]
-pub extern "C" fn __hardfp_atanf(f: f32) -> f32 {
+pub extern "C" fn atanf(f: f32) -> f32 {
     libm::atanf(f)
 }
 
 #[no_mangle]
-pub extern "C" fn __hardfp_floorf(f: f32) -> f32 {
+pub extern "C" fn floorf(f: f32) -> f32 {
     libm::floorf(f)
 }
 
 #[no_mangle]
-pub extern "C" fn __hardfp_log10f(f: f32) -> f32 {
+pub extern "C" fn log10f(f: f32) -> f32 {
     libm::log10f(f)
 }
 
 #[no_mangle]
-pub extern "C" fn __hardfp_exp2f(f: f32) -> f32 {
+pub extern "C" fn exp2f(f: f32) -> f32 {
     libm::exp2f(f)
 }

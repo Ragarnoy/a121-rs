@@ -14,3 +14,4 @@ target = "thumbv7em-none-eabihf"
 [env]
 DEFMT_LOG = "trace"
 ACC_RSS_LIBS={ value = "acc", relative = true }
+CPATH="/usr/arm-none-eabi/include"
