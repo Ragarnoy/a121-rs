@@ -1,0 +1,38 @@
+# This workflow checks whether the library is able to run without the std library (e.g., embedded).
+# This entire file should be removed if this crate does not support no-std. See check.yml for
+# information about how the concurrency cancellation and workflow triggering works
+permissions:
+  contents: read
+on:
+  push:
+    branches: [main]
+  pull_request:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+name: example-xe125_armgcc
+jobs:
+  nostd:
+    runs-on: ubuntu-latest
+    name: ${{ matrix.target }}
+    strategy:
+      matrix:
+        target: [thumbv7em-none-eabihf]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Install stable
+        uses: dtolnay/rust-toolchain@stable
+      - name: Install Arm GNU Toolchain (arm-none-eabi-gcc)
+        uses: carlosperate/arm-none-eabi-gcc-action@v1
+        with:
+          release: '9-2020-q2'
+      - name: rustup target add ${{ matrix.target }}
+        run: rustup target add ${{ matrix.target }}
+      - name: cd to examples/xe125 and set CPATH to Arm's gcc
+        run: | 
+          cd examples/xe125
+          sed -i 's|^CPATH=.*|CPATH="/home/runner/work/a121-rs/a121-rs/include"|' .cargo/config.toml
+      - name: cargo check
+        run: cargo check --target ${{ matrix.target }} --no-default-features
