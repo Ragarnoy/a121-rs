@@ -22,3 +22,5 @@ embedded-alloc = "0.5.1"
 embassy-executor = { version = "0.5.0", features = ["nightly", "integrated-timers", "executor-thread"] }
 static_cell = { version = "2.0.0", features = ["nightly"] }
 embassy-time = "0.3.0"
+libm = { version = "0.2.8", default-features = false }
+num = { version = "0.4.1", default-features = false, features = ["libm"] }

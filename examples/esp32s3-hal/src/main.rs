@@ -19,8 +19,9 @@ use esp32s3_hal::{
 };
 use esp_backtrace as _;
 use esp_println::println;
+use libm;
+use num::complex::Complex32;
 use tinyrlibc as _;
-
 mod spi_adapter;
 
 static COUNT: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
@@ -139,4 +140,14 @@ async fn init(spawner: Spawner) {
             .await
             .unwrap();
     }
+}
+
+#[no_mangle]
+pub extern "C" fn cabsf(f: f32) -> f32 {
+    libm::fabsf(f)
+}
+
+#[no_mangle]
+pub extern "C" fn cexpf(f: Complex32) -> Complex32 {
+    f.exp()
 }
