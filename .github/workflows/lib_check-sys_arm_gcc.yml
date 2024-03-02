@@ -34,4 +34,4 @@ jobs:
       - name: rustup target add ${{ matrix.target }}
         run: rustup target add ${{ matrix.target }}
       - name: cargo check
-        run: cargo check --target ${{ matrix.target }} --no-default-features
+        run: CPATH="$CPATH" ACC_RSS_LIBS="$ACC_RSS_LIBS" cargo check --target ${{ matrix.target }} --no-default-features
