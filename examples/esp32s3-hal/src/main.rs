@@ -99,9 +99,9 @@ async fn init(spawner: Spawner) {
     let mut radar = radar.prepare_sensor(&mut calibration).unwrap();
     let mut distance = RadarDistanceDetector::new(&mut radar);
     let mut buffer = [0u8; 6065];
-    let mut static_call_result = [0u8; 1400];
-    let mut dynamic_call_result = distance
-        .calibrate_detector(&calibration, &mut buffer, &mut static_call_result)
+    let mut static_cal_result = [0u8; 1400];
+    let mut dynamic_cal_result = distance
+        .calibrate_detector(&calibration, &mut buffer, &mut static_cal_result)
         .await
         .unwrap();
 
@@ -113,11 +113,9 @@ async fn init(spawner: Spawner) {
                 .unwrap();
             distance.measure().await.unwrap();
 
-            if let Ok(res) = distance.process_data(
-                &mut buffer,
-                &mut static_call_result,
-                &mut dynamic_call_result,
-            ) {
+            if let Ok(res) =
+                distance.process_data(&mut buffer, &mut static_cal_result, &mut dynamic_cal_result)
+            {
                 if res.num_distances() > 0 {
                     println!(
                         "{} Distances found:\n{:?}",
@@ -134,7 +132,7 @@ async fn init(spawner: Spawner) {
             }
         }
         let calibration = distance.calibrate().await.unwrap();
-        dynamic_call_result = distance
+        dynamic_cal_result = distance
             .update_calibration(&calibration, &mut buffer)
             .await
             .unwrap();
