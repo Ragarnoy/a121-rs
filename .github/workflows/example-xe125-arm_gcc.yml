@@ -37,4 +37,4 @@ jobs:
         run: | 
           cd examples/xe125
       - name: cargo check
-        run: cargo check --target ${{ matrix.target }} --no-default-features
+        run: CPATH="$CPATH" ACC_RSS_LIBS="$ACC_RSS_LIBS" cargo check --target ${{ matrix.target }} --no-default-features
