@@ -14,6 +14,7 @@ dependencies = [
  "embedded-hal",
  "embedded-hal-async",
  "num",
+ "tinyrlibc",
 ]
 
 [[package]]
@@ -578,6 +579,14 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.52",
+]
+
+[[package]]
+name = "tinyrlibc"
+version = "0.3.0"
+source = "git+https://github.com/rust-embedded-community/tinyrlibc#a62f24c7a586d8c4c742132a8cf4a85a81920064"
+dependencies = [
+ "cc",
 ]
 
 [[package]]
