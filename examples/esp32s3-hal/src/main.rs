@@ -5,7 +5,7 @@
 use a121_rs::config::profile::RadarProfile::AccProfile5;
 use a121_rs::radar::{self, Radar};
 use embassy_executor::{task, Spawner};
-use embassy_time::{Duration, Timer};
+use embassy_time::{Delay, Duration, Timer};
 use embedded_alloc::Heap;
 use embedded_hal_bus::spi::ExclusiveDevice;
 use esp32s3_hal::{
@@ -75,18 +75,17 @@ async fn init(spawner: Spawner) {
 
     gpio_r_en.set_high().unwrap();
     Timer::after(Duration::from_millis(5)).await;
-    let mut radar = Radar::new(0, spi_device, gpio_r_int);
+    let mut radar = Radar::new(1, spi_device, gpio_r_int, gpio_r_en, Delay).await;
     println!("Radar enabled.");
-    radar.config.set_profile(AccProfile5);
     let mut buffer = [0u8; 2560];
     println!("Starting calibration.");
 
-    let mut radar = loop {
+    let mut calibration = loop {
         buffer.fill(0);
         if let Ok(mut calibration) = radar.calibrate().await {
             if let Ok(()) = calibration.validate_calibration() {
                 println!("Calibration is valid");
-                break radar.prepare_sensor(&mut calibration).unwrap();
+                break calibration;
             } else {
                 println!("Calibration is invalid");
                 println!("Calibration result: {:?}", calibration);
@@ -98,6 +97,7 @@ async fn init(spawner: Spawner) {
         Timer::after(Duration::from_millis(1)).await;
     };
     println!("Calibration complete!");
+    let mut radar = radar.prepare_sensor(&mut calibration).unwrap();
 
     loop {
         Timer::after(Duration::from_millis(500)).await;
