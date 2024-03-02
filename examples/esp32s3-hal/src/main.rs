@@ -55,8 +55,6 @@ async fn init(spawner: Spawner) {
 
     let io = IO::new(p.GPIO, p.IO_MUX);
 
-    println!("Hello world!");
-
     println!("{}", a121_rs::radar::rss_version());
 
     let mut gpio_r_en = io.pins.gpio33.into_push_pull_output();
