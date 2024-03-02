@@ -10,7 +10,7 @@ on:
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
-name: example-xe125_armgcc
+name: example-xe125-arm_gcc
 jobs:
   nostd:
     runs-on: ubuntu-latest
@@ -33,6 +33,6 @@ jobs:
       - name: cd to examples/xe125 and set CPATH to Arm's gcc
         run: | 
           cd examples/xe125
-          sed -i 's|^CPATH=.*|CPATH="/home/runner/work/a121-rs/a121-rs/include"|' .cargo/config.toml
+          sed -i 's|^CPATH=.*|CPATH="/home/runner/gcc-arm-none-eabi-9.2020.2-linux/gcc-arm-none-eabi-9-2020-q2-update/include"|' .cargo/config.toml
       - name: cargo check
         run: cargo check --target ${{ matrix.target }} --no-default-features
