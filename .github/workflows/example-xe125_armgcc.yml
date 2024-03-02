@@ -10,7 +10,7 @@ on:
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
-name: no-std
+name: example-xe125_armgcc
 jobs:
   nostd:
     runs-on: ubuntu-latest
