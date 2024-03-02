@@ -2,8 +2,8 @@
 #![no_main]
 #![feature(type_alias_impl_trait)]
 
-use a121_rs::config::profile::RadarProfile::AccProfile5;
-use a121_rs::radar::{self, Radar};
+use a121_rs::detector::distance::RadarDistanceDetector;
+use a121_rs::radar::Radar;
 use embassy_executor::{task, Spawner};
 use embassy_time::{Delay, Duration, Timer};
 use embedded_alloc::Heap;
@@ -79,7 +79,6 @@ async fn init(spawner: Spawner) {
     println!("Radar enabled.");
     let mut buffer = [0u8; 2560];
     println!("Starting calibration.");
-
     let mut calibration = loop {
         buffer.fill(0);
         if let Ok(mut calibration) = radar.calibrate().await {
@@ -98,10 +97,46 @@ async fn init(spawner: Spawner) {
     };
     println!("Calibration complete!");
     let mut radar = radar.prepare_sensor(&mut calibration).unwrap();
+    let mut distance = RadarDistanceDetector::new(&mut radar);
+    let mut buffer = [0u8; 6065];
+    let mut static_call_result = [0u8; 1400];
+    let mut dynamic_call_result = distance
+        .calibrate_detector(&calibration, &mut buffer, &mut static_call_result)
+        .await
+        .unwrap();
 
     loop {
-        Timer::after(Duration::from_millis(500)).await;
-        let data = radar.measure().await.unwrap();
-        println!("Data: {:?}", data);
+        Timer::after(Duration::from_millis(200)).await;
+        'inner: loop {
+            distance
+                .prepare_detector(&calibration, &mut buffer)
+                .unwrap();
+            distance.measure().await.unwrap();
+
+            if let Ok(res) = distance.process_data(
+                &mut buffer,
+                &mut static_call_result,
+                &mut dynamic_call_result,
+            ) {
+                if res.num_distances() > 0 {
+                    println!(
+                        "{} Distances found:\n{:?}",
+                        res.num_distances(),
+                        res.distances()
+                    );
+                }
+                if res.calibration_needed() {
+                    println!("Calibration needed");
+                    break 'inner;
+                }
+            } else {
+                println!("Failed to process data");
+            }
+        }
+        let calibration = distance.calibrate().await.unwrap();
+        dynamic_call_result = distance
+            .update_calibration(&calibration, &mut buffer)
+            .await
+            .unwrap();
     }
 }
