@@ -10,17 +10,15 @@ fn main() {
     cc::Build::new()
         .file("c_src/wrapper.c")
         .include("c_src")
-        // .warnings_into_errors(true)
+        .warnings_into_errors(true)
         .extra_warnings(true)
         .compile("log");
 
     // 'acc_rss_libs' directory is supplied by the user, it contains the .a files compiled for their target
-    let acc_rss_libs = match env::var("ACC_RSS_LIBS") {
-        Ok(val) => PathBuf::from(val),
-        Err(_) => {
-            panic!("Error: ACC_RSS_LIBS not set!");
-        }
-    };
+    let acc_rss_libs =
+        PathBuf::from(env::var("ACC_RSS_LIBS").expect("Error: env variable ACC_RSS_LIBS"))
+            .canonicalize()
+            .expect("Error pointing to Acconeer static libs path.");
     println!("cargo:rustc-link-search={}", acc_rss_libs.display());
     println!("cargo:rustc-link-lib=static=acconeer_a121");
     #[cfg(feature = "distance")]
