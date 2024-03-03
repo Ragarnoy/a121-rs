@@ -20,8 +20,9 @@ use esp32s3_hal::{
 use esp_backtrace as _;
 use esp_println::println;
 use libm;
-use tinyrlibc as _;
 mod spi_adapter;
+
+extern crate tinyrlibc;
 
 static COUNT: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
 defmt::timestamp!(
