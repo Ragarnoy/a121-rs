@@ -72,7 +72,7 @@ impl RadarDistanceConfig {
 
     pub fn balanced() -> Self {
         let mut config = Self::new();
-        config.set_interval(0.2..=4.0);
+        config.set_interval(0.2..=3.0);
         config.set_max_step_length(0);
         config.set_max_profile(AccProfile5);
         config.set_reflector_shape(ReflectorShape::Generic);

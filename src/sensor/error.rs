@@ -11,4 +11,5 @@ pub enum SensorError {
     CalibrationInfo,
     ResultNotAvailable,
     ProcessingFailed,
+    BufferTooSmall,
 }
