@@ -1,5 +1,5 @@
 use core::cell::RefCell;
-use core::ffi::{c_char, c_uint, c_void, CStr};
+use core::ffi::{c_char, c_void, CStr};
 use defmt::trace;
 
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
@@ -129,13 +129,18 @@ impl AccHalImpl {
     }
 }
 
+extern "C" {
+    fn malloc(size: usize) -> *mut c_void;
+    fn free(ptr: *mut c_void);
+}
+
 /// Allocates memory for use by the radar SDK.
 ///
 /// # Safety
 ///
 /// This function is unsafe as it performs raw pointer manipulation.
 unsafe extern "C" fn mem_alloc(size: usize) -> *mut c_void {
-    tinyrlibc::malloc(size) as *mut c_void
+    malloc(size)
 }
 
 /// Frees memory previously allocated for the radar SDK.
@@ -144,15 +149,14 @@ unsafe extern "C" fn mem_alloc(size: usize) -> *mut c_void {
 ///
 /// This function is unsafe as it performs raw pointer manipulation.
 unsafe extern "C" fn mem_free(ptr: *mut c_void) {
-    let ptr = ptr as *mut u8;
-    tinyrlibc::free(ptr);
+    free(ptr);
 }
 
 /// This function is called by the C stub to log messages from the SDK.
 /// # Safety
 /// This function is unsafe because it takes a raw pointer.
 #[no_mangle]
-pub unsafe extern "C" fn rust_log(level: c_uint, message: *const c_char) {
+pub unsafe extern "C" fn rust_log(level: u32, message: *const c_char) {
     let c_str = unsafe { CStr::from_ptr(message) };
     let str_slice = c_str.to_str().unwrap_or("");
 

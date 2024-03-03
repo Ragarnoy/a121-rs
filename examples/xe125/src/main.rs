@@ -18,9 +18,10 @@ use embassy_stm32::spi::{Config, Spi};
 use embassy_stm32::time::Hertz;
 use embassy_time::{Delay, Duration, Timer};
 use embedded_hal_bus::spi::ExclusiveDevice;
-use num::complex::Complex32;
+use libm as _;
 use radar::rss_version;
 use talc::{ClaimOnOom, Span, Talc, Talck};
+use tinyrlibc as _;
 #[allow(unused_imports)]
 use {defmt_rtt as _, panic_probe as _};
 
@@ -92,9 +93,9 @@ async fn main(_spawner: Spawner) {
     let mut radar = radar.prepare_sensor(&mut calibration).unwrap();
     let mut distance = RadarDistanceDetector::new(&mut radar);
     let mut buffer = [0u8; 6056];
-    let mut static_call_result = [0u8; 1400];
-    let mut dynamic_call_result = distance
-        .calibrate_detector(&calibration, &mut buffer, &mut static_call_result)
+    let mut static_cal_result = [0u8; 1400];
+    let mut dynamic_cal_result = distance
+        .calibrate_detector(&calibration, &mut buffer, &mut static_cal_result)
         .await
         .unwrap();
 
@@ -106,11 +107,9 @@ async fn main(_spawner: Spawner) {
                 .unwrap();
             distance.measure().await.unwrap();
 
-            if let Ok(res) = distance.process_data(
-                &mut buffer,
-                &mut static_call_result,
-                &mut dynamic_call_result,
-            ) {
+            if let Ok(res) =
+                distance.process_data(&mut buffer, &mut static_cal_result, &mut dynamic_cal_result)
+            {
                 if res.num_distances() > 0 {
                     info!(
                         "{} Distances found:\n{:?}",
@@ -127,7 +126,7 @@ async fn main(_spawner: Spawner) {
             }
         }
         let calibration = distance.calibrate().await.unwrap();
-        dynamic_call_result = distance
+        dynamic_cal_result = distance
             .update_calibration(&calibration, &mut buffer)
             .await
             .unwrap();
@@ -167,56 +166,56 @@ fn xm125_clock_config() -> embassy_stm32::Config {
 }
 
 #[no_mangle]
-pub extern "C" fn __hardfp_cosf(f: f32) -> f32 {
+pub extern "C" fn cosf(f: f32) -> f32 {
     libm::cosf(f)
 }
 
 #[no_mangle]
-pub extern "C" fn __hardfp_sinf(f: f32) -> f32 {
+pub extern "C" fn sinf(f: f32) -> f32 {
     libm::sinf(f)
 }
 
 #[no_mangle]
-pub extern "C" fn __hardfp_roundf(f: f32) -> f32 {
+pub extern "C" fn roundf(f: f32) -> f32 {
     libm::roundf(f)
 }
 
 #[no_mangle]
-pub extern "C" fn __hardfp_sqrtf(f: f32) -> f32 {
+pub extern "C" fn sqrtf(f: f32) -> f32 {
     libm::sqrtf(f)
 }
 
 #[no_mangle]
-pub extern "C" fn __hardfp_powf(f: f32, g: f32) -> f32 {
+pub extern "C" fn powf(f: f32, g: f32) -> f32 {
     libm::powf(f, g)
 }
 
 #[no_mangle]
-pub extern "C" fn __hardfp_cexpf(f: Complex32) -> Complex32 {
-    f.exp()
+pub extern "C" fn cexpf(f: f32) -> f32 {
+    libm::expf(f)
 }
 
 #[no_mangle]
-pub extern "C" fn __hardfp_cabsf(f: f32) -> f32 {
+pub extern "C" fn cabsf(f: f32) -> f32 {
     libm::fabsf(f)
 }
 
 #[no_mangle]
-pub extern "C" fn __hardfp_atanf(f: f32) -> f32 {
+pub extern "C" fn atanf(f: f32) -> f32 {
     libm::atanf(f)
 }
 
 #[no_mangle]
-pub extern "C" fn __hardfp_floorf(f: f32) -> f32 {
+pub extern "C" fn floorf(f: f32) -> f32 {
     libm::floorf(f)
 }
 
 #[no_mangle]
-pub extern "C" fn __hardfp_log10f(f: f32) -> f32 {
+pub extern "C" fn log10f(f: f32) -> f32 {
     libm::log10f(f)
 }
 
 #[no_mangle]
-pub extern "C" fn __hardfp_exp2f(f: f32) -> f32 {
+pub extern "C" fn exp2f(f: f32) -> f32 {
     libm::exp2f(f)
 }

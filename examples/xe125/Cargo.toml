@@ -26,6 +26,7 @@ libm = { version = "0.2.8", default-features = false }
 talc = { version = "4.2", default-features = false, features = ["lock_api"] }
 spin = "0.9.8"
 num = { version = "0.4", default-features = false, features = ["libm"]}
+tinyrlibc = { git = "https://github.com/rust-embedded-community/tinyrlibc.git", version = "0.3.0" }
 
 static_cell = "2.0.0"
 

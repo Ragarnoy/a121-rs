@@ -1,6 +1,6 @@
 use std::ffi::OsStr;
-use std::fs;
 use std::path::PathBuf;
+use std::{env, fs};
 
 fn main() {
     let xmpath = PathBuf::from("rss")
@@ -10,16 +10,16 @@ fn main() {
     cc::Build::new()
         .file("c_src/wrapper.c")
         .include("c_src")
-        .flag("-mfloat-abi=hard")
-        .flag("-mfpu=fpv4-sp-d16")
         .warnings_into_errors(true)
         .extra_warnings(true)
         .compile("log");
 
-    // Assuming 'lib' directory contains the compiled library for ARM architecture
-    let lib = xmpath.join("lib");
-
-    println!("cargo:rustc-link-search={}", lib.display());
+    // 'acc_rss_libs' directory is supplied by the user, it contains the .a files compiled for their target
+    let acc_rss_libs =
+        PathBuf::from(env::var("ACC_RSS_LIBS").expect("Error: env variable ACC_RSS_LIBS"))
+            .canonicalize()
+            .expect("Error pointing to Acconeer static libs path.");
+    println!("cargo:rustc-link-search={}", acc_rss_libs.display());
     println!("cargo:rustc-link-lib=static=acconeer_a121");
     #[cfg(feature = "distance")]
     println!("cargo:rustc-link-lib=static=acc_detector_distance_a121");
@@ -30,6 +30,8 @@ fn main() {
         "cargo:rerun-if-changed={}",
         xmpath.join("include").display()
     );
+    eprintln!("ACC_RSS_LIBS: {}", &acc_rss_libs.to_str().unwrap());
+
     println!("cargo:rerun-if-changed=c_src/wrapper.c");
 
     let headers = xmpath.join("include");
@@ -38,7 +40,6 @@ fn main() {
     }
 
     let mut bindings = bindgen::Builder::default()
-        .clang_arg("--target=arm-none-eabihf")
         .clang_arg(format!("-I{}", headers.display()))
         .layout_tests(false)
         .generate_cstr(true)
