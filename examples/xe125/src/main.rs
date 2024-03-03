@@ -18,11 +18,9 @@ use embassy_stm32::spi::{Config, Spi};
 use embassy_stm32::time::Hertz;
 use embassy_time::{Delay, Duration, Timer};
 use embedded_hal_bus::spi::ExclusiveDevice;
-use libm as _;
 use radar::rss_version;
 use talc::{ClaimOnOom, Span, Talc, Talck};
 use tinyrlibc as _;
-#[allow(unused_imports)]
 use {defmt_rtt as _, panic_probe as _};
 
 use crate::adapter::SpiAdapter;
@@ -73,34 +71,20 @@ async fn main(_spawner: Spawner) {
 
     let mut radar = Radar::new(1, spi_mut_ref.get_mut(), interrupt, enable, Delay).await;
     info!("Radar enabled");
-    let mut buffer = [0u8; 2560];
-    let mut calibration = loop {
-        buffer.fill(0);
-        if let Ok(calibration) = radar.calibrate().await {
-            if let Ok(()) = calibration.validate_calibration() {
-                info!("Calibration is valid");
-                break calibration;
-            } else {
-                warn!("Calibration is invalid");
-                warn!("Calibration result: {:?}", calibration);
-            }
-        } else {
-            warn!("Calibration failed");
-        }
-        Timer::after(Duration::from_millis(1)).await;
-    };
+    let mut calibration = radar.calibrate().await.unwrap();
     info!("Calibration complete!");
     let mut radar = radar.prepare_sensor(&mut calibration).unwrap();
     let mut distance = RadarDistanceDetector::new(&mut radar);
-    let mut buffer = [0u8; 6056];
-    let mut static_cal_result = [0u8; 1400];
+    let mut buffer = [0u8; 6101];
+    let mut static_cal_result = [0u8; 1409];
+    trace!("Calibrating detector");
     let mut dynamic_cal_result = distance
         .calibrate_detector(&calibration, &mut buffer, &mut static_cal_result)
         .await
         .unwrap();
 
     loop {
-        Timer::after(Duration::from_millis(200)).await;
+        Timer::after(Duration::from_millis(100)).await;
         'inner: loop {
             distance
                 .prepare_detector(&calibration, &mut buffer)
@@ -163,59 +147,4 @@ fn xm125_clock_config() -> embassy_stm32::Config {
     });
     config.rcc.ls = LsConfig::default_lsi();
     config
-}
-
-#[no_mangle]
-pub extern "C" fn cosf(f: f32) -> f32 {
-    libm::cosf(f)
-}
-
-#[no_mangle]
-pub extern "C" fn sinf(f: f32) -> f32 {
-    libm::sinf(f)
-}
-
-#[no_mangle]
-pub extern "C" fn roundf(f: f32) -> f32 {
-    libm::roundf(f)
-}
-
-#[no_mangle]
-pub extern "C" fn sqrtf(f: f32) -> f32 {
-    libm::sqrtf(f)
-}
-
-#[no_mangle]
-pub extern "C" fn powf(f: f32, g: f32) -> f32 {
-    libm::powf(f, g)
-}
-
-#[no_mangle]
-pub extern "C" fn cexpf(f: f32) -> f32 {
-    libm::expf(f)
-}
-
-#[no_mangle]
-pub extern "C" fn cabsf(f: f32) -> f32 {
-    libm::fabsf(f)
-}
-
-#[no_mangle]
-pub extern "C" fn atanf(f: f32) -> f32 {
-    libm::atanf(f)
-}
-
-#[no_mangle]
-pub extern "C" fn floorf(f: f32) -> f32 {
-    libm::floorf(f)
-}
-
-#[no_mangle]
-pub extern "C" fn log10f(f: f32) -> f32 {
-    libm::log10f(f)
-}
-
-#[no_mangle]
-pub extern "C" fn exp2f(f: f32) -> f32 {
-    libm::exp2f(f)
 }

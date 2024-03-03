@@ -1,6 +1,7 @@
 use crate::config::profile::RadarProfile;
 use crate::config::profile::RadarProfile::AccProfile5;
 use crate::rss_bindings::*;
+use core::ops::RangeInclusive;
 
 pub type SignalQuality = f32;
 pub type ThresholdSensitivity = f32;
@@ -71,14 +72,13 @@ impl RadarDistanceConfig {
 
     pub fn balanced() -> Self {
         let mut config = Self::new();
-        config.set_start_interval(0.25);
-        config.set_end_interval(4.0);
+        config.set_interval(0.2..=3.0);
         config.set_max_step_length(0);
         config.set_max_profile(AccProfile5);
         config.set_reflector_shape(ReflectorShape::Generic);
         config.set_peak_sorting_method(PeakSortingMethod::Strength);
         config.set_threshold_method(ThresholdMethod::Recorded(100));
-        config.set_threshold_sensitivity(0.5);
+        config.set_threshold_sensitivity(0.70);
         config.set_signal_quality(15.0);
         config.set_close_range_leakage_cancelation(false);
         config
@@ -86,6 +86,11 @@ impl RadarDistanceConfig {
 
     pub fn sensor_set(&mut self, sensor_id: u32) {
         unsafe { acc_detector_distance_config_sensor_set(self.inner, sensor_id) }
+    }
+
+    pub fn set_interval(&mut self, range: RangeInclusive<f32>) {
+        self.set_start_interval(*range.start());
+        self.set_end_interval(*range.end());
     }
 
     pub fn set_start_interval(&mut self, start_interval: f32) {

@@ -13,6 +13,7 @@ dependencies = [
  "embassy-sync",
  "embedded-hal",
  "embedded-hal-async",
+ "libm",
  "num",
  "tinyrlibc",
 ]
@@ -407,7 +408,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "da0df0e5185db44f69b44f26786fe401b6c293d1907744beaa7fa62b2e5a517a"
 dependencies = [
  "autocfg",
- "libm",
 ]
 
 [[package]]
