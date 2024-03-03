@@ -9,7 +9,7 @@ use crate::sensor::calibration::CalibrationResult;
 use crate::sensor::data::RadarData;
 use crate::sensor::error::SensorError;
 use core::ffi::c_void;
-use defmt::trace;
+use defmt::{error, trace};
 use embedded_hal::digital::OutputPin;
 use embedded_hal_async::delay::DelayNs;
 use embedded_hal_async::digital::Wait;
@@ -78,6 +78,12 @@ where
         let mut calibration_complete: bool = false;
         let mut detector_cal_result_dynamic = DynamicResult::default();
         let calibration_attempt: bool;
+        let distances = DistanceSizes::new(&self.inner);
+        if buffer.len() < distances.buffer_size
+            || detector_cal_result_static.len() < distances.detector_cal_result_static_size
+        {
+            error!("Buffer sizes are too small");
+        }
 
         unsafe {
             calibration_attempt = acc_detector_distance_calibrate(
