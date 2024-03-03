@@ -2,7 +2,6 @@
 #![no_main]
 
 use core::cell::RefCell;
-use core::ffi::c_void;
 
 use a121_rs::detector::distance::RadarDistanceDetector;
 use a121_rs::radar;
@@ -19,8 +18,10 @@ use embassy_stm32::spi::{Config, Spi};
 use embassy_stm32::time::Hertz;
 use embassy_time::{Delay, Duration, Timer};
 use embedded_hal_bus::spi::ExclusiveDevice;
+use libm as _;
 use radar::rss_version;
 use talc::{ClaimOnOom, Span, Talc, Talck};
+use tinyrlibc as _;
 #[allow(unused_imports)]
 use {defmt_rtt as _, panic_probe as _};
 
@@ -162,15 +163,6 @@ fn xm125_clock_config() -> embassy_stm32::Config {
     });
     config.rcc.ls = LsConfig::default_lsi();
     config
-}
-
-unsafe extern "C" fn malloc(size: usize) -> *mut c_void {
-    tinyrlibc::malloc(size) as *mut c_void
-}
-
-unsafe extern "C" fn free(ptr: *mut c_void) {
-    let ptr = ptr as *mut u8;
-    tinyrlibc::free(ptr);
 }
 
 #[no_mangle]
