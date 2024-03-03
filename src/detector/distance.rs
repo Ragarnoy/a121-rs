@@ -9,7 +9,7 @@ use crate::sensor::calibration::CalibrationResult;
 use crate::sensor::data::RadarData;
 use crate::sensor::error::SensorError;
 use core::ffi::c_void;
-use defmt::{error, trace};
+use defmt::trace;
 use embedded_hal::digital::OutputPin;
 use embedded_hal_async::delay::DelayNs;
 use embedded_hal_async::digital::Wait;
@@ -77,56 +77,50 @@ where
     ) -> Result<DynamicResult, SensorError> {
         let mut calibration_complete: bool = false;
         let mut detector_cal_result_dynamic = DynamicResult::default();
-        let calibration_attempt: bool;
         let distances = DistanceSizes::new(&self.inner);
+
+        // Check buffer sizes before attempting calibration
         if buffer.len() < distances.buffer_size
             || detector_cal_result_static.len() < distances.detector_cal_result_static_size
         {
-            error!("Buffer sizes are too small");
+            return Err(SensorError::BufferTooSmall);
         }
 
-        unsafe {
-            calibration_attempt = acc_detector_distance_calibrate(
-                self.radar.inner_sensor(),
-                self.inner.inner_mut(),
-                sensor_cal_result.ptr(),
-                buffer.as_mut_ptr() as *mut c_void,
-                buffer.len() as u32,
-                detector_cal_result_static.as_mut_ptr(),
-                detector_cal_result_static.len() as u32,
-                &mut detector_cal_result_dynamic.inner as *mut acc_detector_cal_result_dynamic_t,
-                &mut calibration_complete as *mut bool,
-            );
-        }
+        loop {
+            let calibration_attempt = unsafe {
+                acc_detector_distance_calibrate(
+                    self.radar.inner_sensor(),
+                    self.inner.inner_mut(),
+                    sensor_cal_result.ptr(),
+                    buffer.as_mut_ptr() as *mut c_void,
+                    buffer.len() as u32,
+                    detector_cal_result_static.as_mut_ptr(),
+                    detector_cal_result_static.len() as u32,
+                    &mut detector_cal_result_dynamic.inner
+                        as *mut acc_detector_cal_result_dynamic_t,
+                    &mut calibration_complete as *mut bool,
+                )
+            };
 
-        if calibration_attempt {
-            while !calibration_complete {
-                // Wait for the interrupt to occur asynchronously
-                self.radar
-                    .interrupt
-                    .wait_for_high()
-                    .await
-                    .expect("Failed to wait for interrupt");
-                unsafe {
-                    acc_detector_distance_calibrate(
-                        self.radar.inner_sensor(),
-                        self.inner.inner_mut(),
-                        sensor_cal_result.ptr(),
-                        buffer.as_mut_ptr() as *mut c_void,
-                        buffer.len() as u32,
-                        detector_cal_result_static.as_mut_ptr(),
-                        detector_cal_result_static.len() as u32,
-                        &mut detector_cal_result_dynamic.inner
-                            as *mut acc_detector_cal_result_dynamic_t,
-                        &mut calibration_complete as *mut bool,
-                    );
-                }
+            // Check if the calibration attempt was successful
+            if !calibration_attempt {
+                return Err(SensorError::CalibrationFailed);
             }
 
-            Ok(detector_cal_result_dynamic)
-        } else {
-            Err(SensorError::CalibrationFailed)
+            // Break the loop if calibration is complete
+            if calibration_complete {
+                break;
+            }
+
+            // Wait for the interrupt signal asynchronously
+            self.radar
+                .interrupt
+                .wait_for_high()
+                .await
+                .expect("Failed to wait for interrupt");
         }
+
+        Ok(detector_cal_result_dynamic)
     }
 
     pub async fn update_calibration(
@@ -217,6 +211,7 @@ where
         let mut distance_result = DistanceResult::new(&self.radar.config);
         let mut distance_result_ptr: acc_detector_distance_result_t = distance_result.inner();
 
+        trace!("Processing data");
         let process_attempt: bool = unsafe {
             acc_detector_distance_process(
                 self.inner.inner_mut(),

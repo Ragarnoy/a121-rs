@@ -18,11 +18,9 @@ use embassy_stm32::spi::{Config, Spi};
 use embassy_stm32::time::Hertz;
 use embassy_time::{Delay, Duration, Timer};
 use embedded_hal_bus::spi::ExclusiveDevice;
-use libm as _;
 use radar::rss_version;
 use talc::{ClaimOnOom, Span, Talc, Talck};
 use tinyrlibc as _;
-#[allow(unused_imports)]
 use {defmt_rtt as _, panic_probe as _};
 
 use crate::adapter::SpiAdapter;
@@ -73,34 +71,20 @@ async fn main(_spawner: Spawner) {
 
     let mut radar = Radar::new(1, spi_mut_ref.get_mut(), interrupt, enable, Delay).await;
     info!("Radar enabled");
-    let mut buffer = [0u8; 2560];
-    let mut calibration = loop {
-        buffer.fill(0);
-        if let Ok(calibration) = radar.calibrate().await {
-            if let Ok(()) = calibration.validate_calibration() {
-                info!("Calibration is valid");
-                break calibration;
-            } else {
-                warn!("Calibration is invalid");
-                warn!("Calibration result: {:?}", calibration);
-            }
-        } else {
-            warn!("Calibration failed");
-        }
-        Timer::after(Duration::from_millis(1)).await;
-    };
+    let mut calibration = radar.calibrate().await.unwrap();
     info!("Calibration complete!");
     let mut radar = radar.prepare_sensor(&mut calibration).unwrap();
     let mut distance = RadarDistanceDetector::new(&mut radar);
-    let mut buffer = [0u8; 6056];
+    let mut buffer = [0u8; 6101];
     let mut static_cal_result = [0u8; 1409];
+    trace!("Calibrating detector");
     let mut dynamic_cal_result = distance
         .calibrate_detector(&calibration, &mut buffer, &mut static_cal_result)
         .await
         .unwrap();
 
     loop {
-        Timer::after(Duration::from_millis(200)).await;
+        Timer::after(Duration::from_millis(100)).await;
         'inner: loop {
             distance
                 .prepare_detector(&calibration, &mut buffer)

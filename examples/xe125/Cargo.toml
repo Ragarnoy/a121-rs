@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-a121-rs = { path = "../../../a121-rs", features = ["distance", "libm"] }
+a121-rs = { path = "../../../a121-rs", features = ["distance"] }
 
 panic-probe = { version = "0.3", features = ["print-defmt"] }
 
@@ -22,7 +22,7 @@ embassy-sync = "0.5"
 embassy-embedded-hal = { version = "0.1", features = ["defmt"] }
 embedded-hal-bus = { version = "0.1.0", features = ["defmt-03"] }
 
-libm = { version = "0.2.8", default-features = false }
+libc = { version = "0.2", default-features = false }
 talc = { version = "4.2", default-features = false, features = ["lock_api"] }
 spin = "0.9.8"
 num = { version = "0.4", default-features = false, features = ["libm"]}
