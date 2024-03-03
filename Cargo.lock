@@ -162,7 +162,7 @@ checksum = "11157ac094ffbdde99aa67b23417ebdd801842852b500e395a45a9c0aac03e4a"
 [[package]]
 name = "embassy-sync"
 version = "0.5.0"
-source = "git+https://github.com/embassy-rs/embassy#715b6d52e08944665728eed160a8408a8fbc4570"
+source = "git+https://github.com/embassy-rs/embassy#64890498ca6d6193ca0ac30952c24a657b8b88f3"
 dependencies = [
  "cfg-if",
  "critical-section",
