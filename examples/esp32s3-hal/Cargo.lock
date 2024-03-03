@@ -652,7 +652,6 @@ dependencies = [
  "esp-backtrace",
  "esp-println",
  "esp32s3-hal",
- "libm",
  "num",
  "static_cell",
  "tinyrlibc",
