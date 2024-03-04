@@ -22,6 +22,7 @@ use esp_println::println;
 mod spi_adapter;
 
 extern crate tinyrlibc;
+use libm;
 
 static COUNT: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
 defmt::timestamp!(
