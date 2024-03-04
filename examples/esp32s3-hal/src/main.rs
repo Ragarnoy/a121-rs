@@ -78,34 +78,36 @@ async fn init(spawner: Spawner) {
     println!("Radar enabled.");
     let mut buffer = [0u8; 2560];
     println!("Starting calibration.");
-    let mut calibration = loop {
-        buffer.fill(0);
-        if let Ok(mut calibration) = radar.calibrate().await {
-            if let Ok(()) = calibration.validate_calibration() {
-                println!("Calibration is valid");
-                break calibration;
-            } else {
-                println!("Calibration is invalid");
-                println!("Calibration result: {:?}", calibration);
-                //gpio_r_int.set_low();
-            }
-        } else {
-            println!("Calibration failed");
-        }
-        Timer::after(Duration::from_millis(1)).await;
-    };
-    println!("Calibration complete!");
+    let mut calibration = radar.calibrate().await.unwrap();
     let mut radar = radar.prepare_sensor(&mut calibration).unwrap();
+    println!("Radar calibrated and prepared.");
+    //let mut calibration = loop {
+    //    buffer.fill(0);
+    //    if let Ok(mut calibration) = radar.calibrate().await {
+    //        if let Ok(()) = calibration.validate_calibration() {
+    //            println!("Calibration is valid");
+    //            break calibration;
+    //        } else {
+    //            println!("Calibration is invalid");
+    //            println!("Calibration result: {:?}", calibration);
+    //            //gpio_r_int.set_low();
+    //        }
+    //    } else {
+    //        println!("Calibration failed");
+    //    }
+    //    Timer::after(Duration::from_millis(1)).await;
+    //};
     let mut distance = RadarDistanceDetector::new(&mut radar);
-    let mut buffer = [0u8; 6065];
-    let mut static_cal_result = [0u8; 1400];
+    let mut buffer = [0u8; 6101];
+    let mut static_cal_result = [0u8; 1409];
+    println!("Starting detector calibration.");
     let mut dynamic_cal_result = distance
         .calibrate_detector(&calibration, &mut buffer, &mut static_cal_result)
         .await
         .unwrap();
 
     loop {
-        Timer::after(Duration::from_millis(200)).await;
+        Timer::after(Duration::from_millis(100)).await;
         'inner: loop {
             distance
                 .prepare_detector(&calibration, &mut buffer)
