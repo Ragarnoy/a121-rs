@@ -1,3 +1,4 @@
+#![feature(c_variadic)]
 #![no_std]
 
 extern crate alloc;

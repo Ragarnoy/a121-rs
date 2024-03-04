@@ -7,7 +7,7 @@ use embassy_sync::blocking_mutex::Mutex;
 use embedded_hal::spi::{ErrorKind as SpiErrorKind, SpiDevice};
 
 use crate::rss_bindings::{
-    acc_hal_a121_t, acc_hal_optimization_t, acc_rss_hal_register, acc_sensor_id_t, c_log_stub,
+    acc_hal_a121_t, acc_hal_optimization_t, acc_log_level_t, acc_rss_hal_register, acc_sensor_id_t,
 };
 
 pub type RadarSpi = dyn SpiDevice<u8, Error = SpiErrorKind> + Send;
@@ -56,7 +56,7 @@ impl AccHalImpl {
             mem_alloc: Some(mem_alloc),
             mem_free: Some(mem_free),
             transfer: Some(Self::transfer8_function),
-            log: Some(c_log_stub),
+            log: Some(logger),
             optimization: acc_hal_optimization_t { transfer16: None },
         };
         SPI_INSTANCE.lock(|cell| cell.replace(Some(spi)));
@@ -98,18 +98,12 @@ impl AccHalImpl {
         buffer_length: usize,
     ) {
         let tmp_buf = unsafe { core::slice::from_raw_parts_mut(buffer, buffer_length) };
-        trace!(
-            "Transfer8 function called: buffer={:#X} (size:{})",
-            tmp_buf,
-            buffer_length
-        );
         // Borrow a mutable reference to the SpiBus
         SPI_INSTANCE.lock(|cell| unsafe {
             let mut binding = cell.borrow_mut();
             let spi = binding.as_mut().unwrap_unchecked();
             // Perform the SPI transfer
             spi.transfer_in_place(tmp_buf).unwrap_unchecked();
-            trace!("Transfer8 function completed, buffer={:#X}", tmp_buf);
         });
     }
 
@@ -152,20 +146,21 @@ unsafe extern "C" fn mem_free(ptr: *mut c_void) {
     free(ptr);
 }
 
-/// This function is called by the C stub to log messages from the SDK.
-/// # Safety
-/// This function is unsafe because it takes a raw pointer.
-#[no_mangle]
-pub unsafe extern "C" fn rust_log(level: u32, message: *const c_char) {
-    let c_str = unsafe { CStr::from_ptr(message) };
-    let str_slice = c_str.to_str().unwrap_or("");
-
+unsafe extern "C" fn logger(
+    level: acc_log_level_t,
+    module: *const c_char,
+    format: *const c_char,
+    mut _va: ...
+) {
+    let module = unsafe { CStr::from_ptr(module) };
+    let format = unsafe { CStr::from_ptr(format) };
+    let message = format.to_str().unwrap_or("");
     match level {
-        0 => defmt::error!("{}", str_slice),
-        1 => defmt::warn!("{}", str_slice),
-        2 => defmt::info!("{}", str_slice),
-        3 => defmt::debug!("{}", str_slice),
-        4 => defmt::trace!("{}", str_slice),
+        0 => defmt::error!("{}: {}", module.to_str().unwrap_or(""), message),
+        1 => defmt::warn!("{}: {}", module.to_str().unwrap_or(""), message),
+        2 => defmt::info!("{}: {}", module.to_str().unwrap_or(""), message),
+        3 => defmt::debug!("{}: {}", module.to_str().unwrap_or(""), message),
+        4 => defmt::trace!("{}: {}", module.to_str().unwrap_or(""), message),
         _ => defmt::error!("Unknown log level: {}", level),
     }
 }
