@@ -2,4 +2,4 @@ target
 .idea
 /.idea/*
 examples/*/target
-./Cargo.lock
+/Cargo.lock
