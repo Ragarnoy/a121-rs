@@ -13,7 +13,6 @@ use crate::rss_bindings::{
     acc_sensor_connected, acc_sensor_id_t, acc_sensor_t, acc_version_get_hex,
 };
 use crate::sensor::calibration::CalibrationResult;
-use crate::sensor::data::RadarData;
 use crate::sensor::error::SensorError;
 use crate::sensor::Sensor;
 
@@ -212,11 +211,10 @@ where
     ENABLE: OutputPin,
     DLY: DelayNs,
 {
-    pub async fn measure<'a>(&mut self) -> Result<RadarData, SensorError> {
+    pub async fn measure<'a>(&mut self, data: &mut [u8]) -> Result<(), SensorError> {
         if (self.sensor.measure(&mut self.interrupt).await).is_ok() {
-            let mut data = RadarData::new();
-            if self.sensor.read(&mut data).is_ok() {
-                Ok(data)
+            if self.sensor.read(data).is_ok() {
+                Ok(())
             } else {
                 Err(SensorError::ReadError)
             }
