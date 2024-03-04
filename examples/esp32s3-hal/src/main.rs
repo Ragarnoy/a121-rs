@@ -22,6 +22,7 @@ use esp_println::println;
 mod spi_adapter;
 
 extern crate tinyrlibc;
+use libm;
 
 static COUNT: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
 defmt::timestamp!(
@@ -135,4 +136,14 @@ async fn init(spawner: Spawner) {
             .await
             .unwrap();
     }
+}
+
+#[no_mangle]
+pub extern "C" fn cabsf(f: f32) -> f32 {
+    libm::fabsf(f)
+}
+
+#[no_mangle]
+pub extern "C" fn cexpf(f: f32) -> f32 {
+    libm::expf(f)
 }
