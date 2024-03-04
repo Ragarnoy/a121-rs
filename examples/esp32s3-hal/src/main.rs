@@ -136,3 +136,13 @@ async fn init(spawner: Spawner) {
             .unwrap();
     }
 }
+
+#[no_mangle]
+pub extern "C" fn cabsf(f: f32) -> f32 {
+    libm::fabsf(f)
+}
+
+#[no_mangle]
+pub extern "C" fn cexpf(f: f32) -> f32 {
+    libm::expf(f)
+}
