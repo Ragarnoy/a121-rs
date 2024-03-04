@@ -3,16 +3,23 @@ use std::path::PathBuf;
 use std::{env, fs};
 
 fn main() {
+    env::set_var(
+        "ACC_RSS_LIBS",
+        PathBuf::from(
+            "/home/ragarnoy/Downloads/acconeer_cortex_m4_gcc_a121-v1_5_0/cortex_m4_gcc/rss/lib",
+        )
+        .to_str()
+        .unwrap(),
+    );
+    env::set_var(
+        "CPATH",
+        PathBuf::from("/usr/lib/arm-none-eabi/include")
+            .to_str()
+            .unwrap(),
+    );
     let xmpath = PathBuf::from("rss")
         .canonicalize()
         .expect("rss directory not found");
-
-    cc::Build::new()
-        .file("c_src/wrapper.c")
-        .include("c_src")
-        .warnings_into_errors(true)
-        .extra_warnings(true)
-        .compile("log");
 
     // 'acc_rss_libs' directory is supplied by the user, it contains the .a files compiled for their target
     let acc_rss_libs =
@@ -31,8 +38,6 @@ fn main() {
         xmpath.join("include").display()
     );
     eprintln!("ACC_RSS_LIBS: {}", &acc_rss_libs.to_str().unwrap());
-
-    println!("cargo:rerun-if-changed=c_src/wrapper.c");
 
     let headers = xmpath.join("include");
     if !headers.exists() {
@@ -53,7 +58,6 @@ fn main() {
         }
     }
 
-    bindings = bindings.header("c_src/wrapper.h");
     let bindings = bindings.generate().expect("Unable to generate bindings");
 
     let out_path = PathBuf::from(std::env::var("OUT_DIR").unwrap());
