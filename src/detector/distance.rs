@@ -126,7 +126,7 @@ where
         DistanceSizes::new(&self.inner).detector_cal_result_static_size
     }
 
-    pub fn get_dynamic_result_buffer_size(&self) -> usize {
+    pub fn get_distance_buffer_size(&self) -> usize {
         DistanceSizes::new(&self.inner).buffer_size
     }
 
