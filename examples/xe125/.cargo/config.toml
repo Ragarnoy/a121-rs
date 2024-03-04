@@ -2,10 +2,18 @@
 runner = "probe-rs run --chip STM32L431CBYx --connect-under-reset"
 
 [target.thumbv7em-none-eabihf]
+linker = "arm-none-eabi-gcc"
 rustflags = [
     "-C", "link-arg=-Tlink.x",
-    "-C", "link-arg=--nmagic",
+#    "-C", "link-arg=--nmagic",
     "-C", "link-arg=-Tdefmt.x",
+    "-C", "link-arg=-mcpu=cortex-m4",
+    "-C", "link-arg=-mthumb",
+    "-C", "link-arg=-mfloat-abi=hard",
+    "-C", "link-arg=-mfpu=fpv4-sp-d16",
+    "-L", "/usr/lib/arm-none-eabi/newlib/thumb/v7e-m+fp/hard",
+    "-C", "link-arg=-lm",
+    "-C", "link-arg=-lc",
 ]
 
 [build]

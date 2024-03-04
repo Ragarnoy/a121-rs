@@ -75,8 +75,8 @@ async fn main(_spawner: Spawner) {
     info!("Calibration complete!");
     let mut radar = radar.prepare_sensor(&mut calibration).unwrap();
     let mut distance = RadarDistanceDetector::new(&mut radar);
-    let mut buffer = [0u8; 6101];
-    let mut static_cal_result = [0u8; 1409];
+    let mut buffer = [0u8; 6000];
+    let mut static_cal_result = [0u8; 409];
     trace!("Calibrating detector");
     let mut dynamic_cal_result = distance
         .calibrate_detector(&calibration, &mut buffer, &mut static_cal_result)

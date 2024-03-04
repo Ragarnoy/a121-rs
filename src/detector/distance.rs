@@ -211,7 +211,6 @@ where
         let mut distance_result = DistanceResult::new(&self.radar.config);
         let mut distance_result_ptr: acc_detector_distance_result_t = distance_result.inner();
 
-        trace!("Processing data");
         let process_attempt: bool = unsafe {
             acc_detector_distance_process(
                 self.inner.inner_mut(),
