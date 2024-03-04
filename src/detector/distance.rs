@@ -123,6 +123,14 @@ where
         Ok(detector_cal_result_dynamic)
     }
 
+    pub fn get_static_result_buffer_size(&self) -> usize {
+        DistanceSizes::new(&self.inner).detector_cal_result_static_size
+    }
+
+    pub fn get_dynamic_result_buffer_size(&self) -> usize {
+        DistanceSizes::new(&self.inner).buffer_size
+    }
+
     pub async fn update_calibration(
         &mut self,
         sensor_cal_result: &CalibrationResult,
