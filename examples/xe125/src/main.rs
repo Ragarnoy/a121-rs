@@ -1,12 +1,15 @@
 #![no_std]
 #![no_main]
 
+extern crate alloc;
+
+use alloc::vec;
 use core::cell::RefCell;
 
 use a121_rs::detector::distance::RadarDistanceDetector;
 use a121_rs::radar;
 use a121_rs::radar::Radar;
-use defmt::{info, warn};
+use defmt::{info, trace, warn};
 use embassy_executor::Spawner;
 use embassy_stm32::exti::ExtiInput;
 use embassy_stm32::gpio::{Input, Level, Output, Pull, Speed};
@@ -16,7 +19,7 @@ use embassy_stm32::rcc::{
 };
 use embassy_stm32::spi::{Config, Spi};
 use embassy_stm32::time::Hertz;
-use embassy_time::{Delay, Duration, Timer};
+use embassy_time::Delay;
 use embedded_hal_bus::spi::ExclusiveDevice;
 use radar::rss_version;
 use talc::{ClaimOnOom, Span, Talc, Talck};
@@ -27,7 +30,7 @@ use crate::adapter::SpiAdapter;
 
 mod adapter;
 
-static mut ARENA: [u8; 10000] = [0; 10000];
+static mut ARENA: [u8; 16000] = [0u8; 16000];
 
 #[global_allocator]
 static ALLOCATOR: Talck<spin::Mutex<()>, ClaimOnOom> = Talc::new(unsafe {
@@ -75,8 +78,8 @@ async fn main(_spawner: Spawner) {
     info!("Calibration complete!");
     let mut radar = radar.prepare_sensor(&mut calibration).unwrap();
     let mut distance = RadarDistanceDetector::new(&mut radar);
-    let mut buffer = [0u8; 6000];
-    let mut static_cal_result = [0u8; 409];
+    let mut buffer = vec![0u8; distance.get_dynamic_result_buffer_size()];
+    let mut static_cal_result = vec![0u8; distance.get_static_result_buffer_size()];
     trace!("Calibrating detector");
     let mut dynamic_cal_result = distance
         .calibrate_detector(&calibration, &mut buffer, &mut static_cal_result)
@@ -84,7 +87,6 @@ async fn main(_spawner: Spawner) {
         .unwrap();
 
     loop {
-        Timer::after(Duration::from_millis(100)).await;
         'inner: loop {
             distance
                 .prepare_detector(&calibration, &mut buffer)
