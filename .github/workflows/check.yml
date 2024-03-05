@@ -106,8 +106,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: true
-      - name: Install stable
-        uses: dtolnay/rust-toolchain@stable
+      - name: Install nightly
+        uses: dtolnay/rust-toolchain@nightly
       - name: Install Arm GNU Toolchain (arm-none-eabi-gcc)
         uses: carlosperate/arm-none-eabi-gcc-action@v1
         with:
