@@ -3,20 +3,6 @@ use std::path::PathBuf;
 use std::{env, fs};
 
 fn main() {
-    env::set_var(
-        "ACC_RSS_LIBS",
-        PathBuf::from(
-            "/home/ragarnoy/Downloads/acconeer_cortex_m4_gcc_a121-v1_5_0/cortex_m4_gcc/rss/lib",
-        )
-        .to_str()
-        .unwrap(),
-    );
-    env::set_var(
-        "CPATH",
-        PathBuf::from("/usr/lib/arm-none-eabi/include")
-            .to_str()
-            .unwrap(),
-    );
     let xmpath = PathBuf::from("rss")
         .canonicalize()
         .expect("rss directory not found");
