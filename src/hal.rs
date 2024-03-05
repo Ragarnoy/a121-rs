@@ -56,7 +56,10 @@ impl AccHalImpl {
             mem_alloc: Some(mem_alloc),
             mem_free: Some(mem_free),
             transfer: Some(Self::transfer8_function),
+            #[cfg(feature = "nightly-logger")]
             log: Some(logger),
+            #[cfg(not(feature = "nightly-logger"))]
+            log: Some(crate::rss_bindings::c_log_stub),
             optimization: acc_hal_optimization_t { transfer16: None },
         };
         SPI_INSTANCE.lock(|cell| cell.replace(Some(spi)));
@@ -146,6 +149,7 @@ unsafe extern "C" fn mem_free(ptr: *mut c_void) {
     free(ptr);
 }
 
+#[cfg(feature = "nightly-logger")]
 unsafe extern "C" fn logger(
     level: acc_log_level_t,
     module: *const c_char,
@@ -161,6 +165,25 @@ unsafe extern "C" fn logger(
         2 => defmt::info!("{}: {}", module.to_str().unwrap_or(""), message),
         3 => defmt::debug!("{}: {}", module.to_str().unwrap_or(""), message),
         4 => defmt::trace!("{}: {}", module.to_str().unwrap_or(""), message),
+        _ => defmt::error!("Unknown log level: {}", level),
+    }
+}
+
+#[cfg(not(feature = "nightly-logger"))]
+/// This function is called by the C stub to log messages from the SDK.
+/// # Safety
+/// This function is unsafe because it takes a raw pointer.
+#[no_mangle]
+pub unsafe extern "C" fn rust_log(level: u32, message: *const c_char) {
+    let c_str = unsafe { CStr::from_ptr(message) };
+    let str_slice = c_str.to_str().unwrap_or("");
+
+    match level {
+        0 => defmt::error!("{}", str_slice),
+        1 => defmt::warn!("{}", str_slice),
+        2 => defmt::info!("{}", str_slice),
+        3 => defmt::debug!("{}", str_slice),
+        4 => defmt::trace!("{}", str_slice),
         _ => defmt::error!("Unknown log level: {}", level),
     }
 }

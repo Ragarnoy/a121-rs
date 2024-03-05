@@ -22,6 +22,7 @@ cc = "1.0"
 distance = []
 presence = []
 libm = ["dep:libm"]
+nightly-logger = []
 
 [profile.dev]
 lto = true

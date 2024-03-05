@@ -12,6 +12,7 @@ fn main() {
         PathBuf::from(env::var("ACC_RSS_LIBS").expect("Error: env variable ACC_RSS_LIBS"))
             .canonicalize()
             .expect("Error pointing to Acconeer static libs path.");
+
     println!("cargo:rustc-link-search={}", acc_rss_libs.display());
     println!("cargo:rustc-link-lib=static=acconeer_a121");
     #[cfg(feature = "distance")]
@@ -42,6 +43,20 @@ fn main() {
         if path.is_file() && path.extension() == Some(OsStr::new("h")) {
             bindings = bindings.header(path.to_str().unwrap());
         }
+    }
+
+    #[cfg(not(feature = "nightly-logger"))]
+    {
+        cc::Build::new()
+            .file("c_src/wrapper.c")
+            .include("c_src")
+            .include("/usr/lib/arm-none-eabi/include")
+            .warnings_into_errors(true)
+            .extra_warnings(true)
+            .compile("log");
+        println!("cargo:rerun-if-changed=c_src/wrapper.c");
+        println!("cargo:rustc-link-lib=static=log");
+        bindings = bindings.header("c_src/wrapper.h");
     }
 
     let bindings = bindings.generate().expect("Unable to generate bindings");
