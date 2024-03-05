@@ -1,4 +1,4 @@
-#![feature(c_variadic)]
+#![cfg_attr(feature = "nightly-logger", feature(c_variadic))]
 #![no_std]
 
 extern crate alloc;
