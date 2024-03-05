@@ -7,7 +7,7 @@ use embassy_sync::blocking_mutex::Mutex;
 use embedded_hal::spi::{ErrorKind as SpiErrorKind, SpiDevice};
 
 use crate::rss_bindings::{
-    acc_hal_a121_t, acc_hal_optimization_t, acc_log_level_t, acc_rss_hal_register, acc_sensor_id_t,
+    acc_hal_a121_t, acc_hal_optimization_t, acc_rss_hal_register, acc_sensor_id_t,
 };
 
 pub type RadarSpi = dyn SpiDevice<u8, Error = SpiErrorKind> + Send;
@@ -151,7 +151,7 @@ unsafe extern "C" fn mem_free(ptr: *mut c_void) {
 
 #[cfg(feature = "nightly-logger")]
 unsafe extern "C" fn logger(
-    level: acc_log_level_t,
+    level: crate::rss_bindings::acc_log_level_t,
     module: *const c_char,
     format: *const c_char,
     mut _va: ...
