@@ -8,7 +8,6 @@ use crate::rss_bindings::{
     acc_processing_create, acc_processing_destroy, acc_processing_execute, acc_processing_result_t,
     acc_processing_t,
 };
-use crate::sensor::data::RadarData;
 
 pub mod metadata;
 
@@ -64,12 +63,12 @@ impl Processing {
         &self.metadata
     }
 
-    pub fn execute(&mut self, buffer: &mut RadarData) -> ProcessingResult {
+    pub fn execute(&mut self, buffer: &mut [u8]) -> ProcessingResult {
         let mut result = ProcessingResult::new();
         unsafe {
             acc_processing_execute(
                 self.inner,
-                buffer.mut_ptr() as *mut c_void,
+                buffer.as_mut_ptr() as *mut c_void,
                 result.mut_ptr(),
             );
         }
