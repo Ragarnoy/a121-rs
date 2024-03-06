@@ -1249,7 +1249,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32b752e52a2da0ddfbdbcc6fceadfeede4c939ed16d13e648833a61dfb611ed8"
 
 [[package]]
-name = "xe125-hal"
+name = "xe125-nightly"
 version = "0.1.0"
 dependencies = [
  "a121-rs",
