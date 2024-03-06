@@ -25,7 +25,6 @@ use esp_println::println;
 mod spi_adapter;
 
 extern crate tinyrlibc;
-use libm;
 
 static COUNT: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
 defmt::timestamp!(
@@ -61,7 +60,7 @@ async fn init(_spawner: Spawner) {
 
     println!("{}", a121_rs::radar::rss_version());
 
-    let mut gpio_r_en = io.pins.gpio33.into_push_pull_output();
+    let gpio_r_en = io.pins.gpio33.into_push_pull_output();
     let gpio_r_int = io.pins.gpio34.into_pull_down_input();
 
     let sclk = io.pins.gpio12;
@@ -69,7 +68,7 @@ async fn init(_spawner: Spawner) {
     let mosi = io.pins.gpio11;
     let cs = io.pins.gpio10;
 
-    let spi_bus = Spi::new(p.SPI2, 1000u32.kHz(), SpiMode::Mode0, &clocks);
+    let spi_bus = Spi::new(p.SPI2, 40u32.MHz(), SpiMode::Mode0, &clocks);
     let spi_bus = spi_bus.with_pins(Some(sclk), Some(mosi), Some(miso), gpio::NO_PIN);
     let spi_device = ExclusiveDevice::new_no_delay(spi_bus, cs.into_push_pull_output());
     let spi_device = spi_adapter::SpiAdapter::new(spi_device);
@@ -132,20 +131,10 @@ async fn init(_spawner: Spawner) {
                 "[Measurement frames]:[Frames with at least 1 distance]:[Total distances] per second: \n {}:{}:{}",
                 frames, measurements, distances
             );
-            let mut frames = 0;
-            let mut measurements = 0;
-            let mut distances = 0;
+            frames = 0;
+            measurements = 0;
+            distances = 0;
             last_print = Instant::now();
         }
     }
-}
-
-#[no_mangle]
-pub extern "C" fn cabsf(f: f32) -> f32 {
-    libm::fabsf(f)
-}
-
-#[no_mangle]
-pub extern "C" fn cexpf(f: f32) -> f32 {
-    libm::expf(f)
 }
