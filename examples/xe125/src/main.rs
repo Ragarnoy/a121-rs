@@ -19,7 +19,7 @@ use embassy_stm32::rcc::{
 };
 use embassy_stm32::spi::{Config, Spi};
 use embassy_stm32::time::Hertz;
-use embassy_time::Delay;
+use embassy_time::{Delay, Instant};
 use embedded_hal_bus::spi::ExclusiveDevice;
 use radar::rss_version;
 use talc::{ClaimOnOom, Span, Talc, Talck};
@@ -78,7 +78,7 @@ async fn main(_spawner: Spawner) {
     info!("Calibration complete!");
     let mut radar = radar.prepare_sensor(&mut calibration).unwrap();
     let mut distance = RadarDistanceDetector::new(&mut radar);
-    let mut buffer = vec![0u8; distance.get_dynamic_result_buffer_size()];
+    let mut buffer = vec![0u8; distance.get_distance_buffer_size()];
     let mut static_cal_result = vec![0u8; distance.get_static_result_buffer_size()];
     trace!("Calibrating detector");
     let mut dynamic_cal_result = distance
@@ -86,17 +86,19 @@ async fn main(_spawner: Spawner) {
         .await
         .unwrap();
 
-    loop {
-        'inner: loop {
-            distance
-                .prepare_detector(&calibration, &mut buffer)
-                .unwrap();
-            distance.measure().await.unwrap();
+    let mut counter = 0;
+    let mut last_print = Instant::now();
 
-            if let Ok(res) =
-                distance.process_data(&mut buffer, &mut static_cal_result, &mut dynamic_cal_result)
-            {
+    loop {
+        distance
+            .prepare_detector(&calibration, &mut buffer)
+            .unwrap();
+        distance.measure(&mut buffer).await.unwrap();
+
+        match distance.process_data(&mut buffer, &mut static_cal_result, &mut dynamic_cal_result) {
+            Ok(res) => {
                 if res.num_distances() > 0 {
+                    counter += res.num_distances();
                     info!(
                         "{} Distances found:\n{:?}",
                         res.num_distances(),
@@ -105,17 +107,21 @@ async fn main(_spawner: Spawner) {
                 }
                 if res.calibration_needed() {
                     info!("Calibration needed");
-                    break 'inner;
+                    let calibration = distance.calibrate().await.unwrap();
+                    dynamic_cal_result = distance
+                        .update_calibration(&calibration, &mut buffer)
+                        .await
+                        .unwrap();
                 }
-            } else {
-                warn!("Failed to process data");
             }
+            Err(_) => warn!("Failed to process data"),
         }
-        let calibration = distance.calibrate().await.unwrap();
-        dynamic_cal_result = distance
-            .update_calibration(&calibration, &mut buffer)
-            .await
-            .unwrap();
+
+        if Instant::now() - last_print >= embassy_time::Duration::from_secs(1) {
+            info!("Distances per second: {}", counter);
+            counter = 0;
+            last_print = Instant::now();
+        }
     }
 }
 

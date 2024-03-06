@@ -6,7 +6,6 @@ use crate::detector::distance::results::{DistanceSizes, ProcessDataError};
 use crate::radar::{Radar, Ready};
 use crate::rss_bindings::*;
 use crate::sensor::calibration::CalibrationResult;
-use crate::sensor::data::RadarData;
 use crate::sensor::error::SensorError;
 use core::ffi::c_void;
 use defmt::trace;
@@ -127,7 +126,7 @@ where
         DistanceSizes::new(&self.inner).detector_cal_result_static_size
     }
 
-    pub fn get_dynamic_result_buffer_size(&self) -> usize {
+    pub fn get_distance_buffer_size(&self) -> usize {
         DistanceSizes::new(&self.inner).buffer_size
     }
 
@@ -201,8 +200,8 @@ where
         }
     }
 
-    pub async fn measure(&mut self) -> Result<RadarData, SensorError> {
-        self.radar.measure().await
+    pub async fn measure(&mut self, data: &mut [u8]) -> Result<(), SensorError> {
+        self.radar.measure(data).await
     }
 
     pub async fn calibrate(&mut self) -> Result<CalibrationResult, SensorError> {

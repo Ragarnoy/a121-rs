@@ -8,14 +8,12 @@ use embedded_hal_async::delay::DelayNs;
 use embedded_hal_async::digital::Wait;
 
 use calibration::CalibrationResult;
-use data::RadarData;
 use error::SensorError;
 
 use crate::config::RadarConfig;
 use crate::rss_bindings::*;
 
 pub mod calibration;
-pub mod data;
 pub mod error;
 
 struct InnerSensor {
@@ -322,13 +320,13 @@ where
     /// # Ok(())
     /// # }
     /// ```
-    pub fn read(&self, buffer: &mut RadarData) -> Result<(), SensorError> {
+    pub fn read(&self, buffer: &mut [u8]) -> Result<(), SensorError> {
         // Implementation to read the radar data
         let success = unsafe {
             acc_sensor_read(
                 self.inner.deref(),
-                buffer.data.as_mut_ptr() as *mut _,
-                buffer.data.len() as u32,
+                buffer.as_mut_ptr() as *mut c_void,
+                buffer.len() as u32,
             )
         };
         if success {
