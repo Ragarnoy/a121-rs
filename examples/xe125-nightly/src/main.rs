@@ -87,6 +87,8 @@ async fn main(_spawner: Spawner) {
         .unwrap();
 
     let mut counter = 0;
+    let mut counter_d = 0;
+    let mut counter_dt = 0;
     let mut last_print = Instant::now();
 
     loop {
@@ -97,8 +99,10 @@ async fn main(_spawner: Spawner) {
 
         match distance.process_data(&mut buffer, &mut static_cal_result, &mut dynamic_cal_result) {
             Ok(res) => {
+                counter += 1;
                 if res.num_distances() > 0 {
-                    counter += res.num_distances();
+                    counter_d += 1;
+                    counter_dt += res.num_distances();
                     info!(
                         "{} Distances found:\n{:?}",
                         res.num_distances(),
@@ -118,8 +122,13 @@ async fn main(_spawner: Spawner) {
         }
 
         if Instant::now() - last_print >= embassy_time::Duration::from_secs(1) {
-            info!("Distances per second: {}", counter);
+            info!(
+                "[Measurement frames]:[Frames with at least 1 distance]:[Total Distances] per second: \n {}:{}:{}",
+                counter, counter_d, counter_dt
+            );
             counter = 0;
+            counter_d = 0;
+            counter_dt = 0;
             last_print = Instant::now();
         }
     }
