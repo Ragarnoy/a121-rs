@@ -33,9 +33,9 @@ jobs:
           sudo apt-get install gcc-arm-none-eabi clang
       - name: rustup target add ${{ matrix.target }}
         run: rustup target add ${{ matrix.target }}
-      - name: cd to examples/xe125 and remove config.toml vars
+      - name: cd to examples/xe125-nightly and remove config.toml vars
         run: | 
-          cd examples/xe125
+          cd examples/xe125-nightly
           sed -i 's|^CPATH=.*||' .cargo/config.toml
           sed -i 's|^ACC_RSS_LIBS=.*||' .cargo/config.toml
       - name: cargo check
