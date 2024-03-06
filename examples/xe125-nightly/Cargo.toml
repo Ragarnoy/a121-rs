@@ -1,10 +1,10 @@
 [package]
-name = "xe125-hal"
+name = "xe125-nightly"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-a121-rs = { path = "../../../a121-rs", features = ["distance", "nightly-logger"] }
+a121-rs = { path = "../../", features = ["distance", "nightly-logger"] }
 
 panic-probe = { version = "0.3", features = ["print-defmt"] }
 

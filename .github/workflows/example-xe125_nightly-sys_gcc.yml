@@ -10,10 +10,10 @@ on:
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
-name: example-xe125-sys_gcc
+name: example-xe125_nightly-sys_gcc
 env:
   CPATH: "/usr/lib/arm-none-eabi/include"
-  ACC_RSS_LIBS: "/home/runner/work/a121-rs/a121-rs/examples/xe125/acc"
+  ACC_RSS_LIBS: "/home/runner/work/a121-rs/a121-rs/examples/xe125-nightly/acc"
 jobs:
   nostd:
     runs-on: ubuntu-latest
@@ -26,17 +26,17 @@ jobs:
         with:
           submodules: true
       - name: Install stable
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@nightly
       - name: Install system arm gcc and clang
         run: |
           sudo apt-get update
           sudo apt-get install gcc-arm-none-eabi clang
       - name: rustup target add ${{ matrix.target }}
         run: rustup target add ${{ matrix.target }}
-      - name: cd to examples/xe125 and remove config.toml vars
+      - name: cd to examples/xe125-nightly and remove config.toml vars
         run: | 
-          cd examples/xe125
+          cd examples/xe125-nightly
           sed -i 's|^CPATH=.*||' .cargo/config.toml
           sed -i 's|^ACC_RSS_LIBS=.*||' .cargo/config.toml
       - name: cargo check
-        run: cargo check --target ${{ matrix.target }} --no-default-features
+        run: cargo check --target ${{ matrix.target }}
