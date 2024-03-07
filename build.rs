@@ -50,7 +50,6 @@ fn main() {
         cc::Build::new()
             .file("c_src/wrapper.c")
             .include("c_src")
-            .include("/usr/lib/arm-none-eabi/include")
             .warnings_into_errors(true)
             .extra_warnings(true)
             .compile("log");
