@@ -36,10 +36,10 @@ jobs:
       - name: debug
         shell: bash
         run: |
-          echo "$ACC_RSS_LIBS"
+          ls -ld "$ACC_RSS_LIBS"
       - name: mkdir
         shell: bash
         run: |
-          test ! -d "$ACC_RSS_LIBS" && mkdir -p "$ACC_RSS_LIBS"
+          mkdir -p "$ACC_RSS_LIBS"
       - name: cargo check
         run: cargo check --target ${{ matrix.target }} --no-default-features
