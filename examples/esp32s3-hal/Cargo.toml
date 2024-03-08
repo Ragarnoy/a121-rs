@@ -9,7 +9,7 @@ license = "MIT OR Apache-2.0"
 debug = true
 
 [dependencies]
-esp32s3-hal = { version = "0.15.0", features = ["async", "eh1", "embassy", "embassy-time-timg0", "embassy-executor-thread"] }
+esp-hal = { version = "0.16.0", features = ["async", "eh1", "embassy", "embassy-time-timg0", "embassy-executor-thread", "esp32s3"] }
 esp-backtrace = { version = "0.11.0", features = ["esp32s3", "panic-handler", "exception-handler", "println"] }
 esp-println = { version = "0.9.0", features = ["esp32s3", "defmt-espflash"] }
 defmt = "0.3.5"
