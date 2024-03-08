@@ -30,16 +30,10 @@ jobs:
       - name: Install system arm gcc and clang
         run: |
           sudo apt-get update
-          sudo apt-get install gcc-arm-none-eabi clang
+          sudo apt-get install -y gcc-arm-none-eabi clang
       - name: rustup target add ${{ matrix.target }}
         run: rustup target add ${{ matrix.target }}
-      - name: debug
-        shell: bash
-        run: |
-          ls -ld "$ACC_RSS_LIBS"
-      - name: mkdir
-        shell: bash
-        run: |
-          mkdir -p "$ACC_RSS_LIBS"
+      - name: mkdir $ACC_RSS_LIBS
+        run: mkdir -p "$ACC_RSS_LIBS"
       - name: cargo check
         run: cargo check --target ${{ matrix.target }} --no-default-features
