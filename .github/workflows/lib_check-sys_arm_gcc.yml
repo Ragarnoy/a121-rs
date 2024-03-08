@@ -33,10 +33,13 @@ jobs:
           sudo apt-get install gcc-arm-none-eabi clang
       - name: rustup target add ${{ matrix.target }}
         run: rustup target add ${{ matrix.target }}
-      - name: mkdir $ACC_RSS_LIBS
+      - name: debug
         shell: bash
         run: |
-          echo $ACC_RSS_LIBS
+          echo "$ACC_RSS_LIBS"
+      - name: mkdir
+        shell: bash
+        run: |
           test ! -d "$ACC_RSS_LIBS" && mkdir -p "$ACC_RSS_LIBS"
       - name: cargo check
         run: cargo check --target ${{ matrix.target }} --no-default-features
