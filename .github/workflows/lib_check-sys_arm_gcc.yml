@@ -34,6 +34,6 @@ jobs:
       - name: rustup target add ${{ matrix.target }}
         run: rustup target add ${{ matrix.target }}
       - name: mkdir $ACC_RSS_LIBS
-        run: test ! -d "$ACC_RSS_LIBS" && mkdir "$ACC_RSS_LIBS"
+        run: test ! -d "$ACC_RSS_LIBS" && mkdir -p "$ACC_RSS_LIBS"
       - name: cargo check
         run: cargo check --target ${{ matrix.target }} --no-default-features

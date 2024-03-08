@@ -120,7 +120,7 @@ jobs:
       # intentionally no target specifier; see https://github.com/jonhoo/rust-ci-conf/pull/4
       # --feature-powerset runs for every combination of features
       - name mkdir $ACC_RSS_LIBS
-        run: test ! -d "$ACC_RSS_LIBS" && mkdir "$ACC_RSS_LIBS"
+        run: test ! -d "$ACC_RSS_LIBS" && mkdir -p "$ACC_RSS_LIBS"
       - name: cargo hack
         run: cargo hack --feature-powerset check
         working-directory: ${{ matrix.crate }}
@@ -150,7 +150,7 @@ jobs:
         run: rustup target add ${{ matrix.target }}
         working-directory: ${{ matrix.crate }}
       - name: mkdir $ACC_RSS_LIBS
-        run: test ! -d "$ACC_RSS_LIBS" && mkdir "$ACC_RSS_LIBS"
+        run: test ! -d "$ACC_RSS_LIBS" && mkdir -p "$ACC_RSS_LIBS"
       - name: cargo +${{ matrix.msrv }} check
         run: cargo check
         working-directory: ${{ matrix.crate }}
