@@ -11,7 +11,8 @@ use embassy_executor::{task, Spawner};
 use embassy_time::{Delay, Instant};
 use embedded_alloc::Heap;
 use embedded_hal_bus::spi::ExclusiveDevice;
-use esp32s3_hal::{
+use esp_backtrace as _;
+use esp_hal::{
     clock::ClockControl,
     embassy::{self},
     gpio::{self, IO},
@@ -20,7 +21,6 @@ use esp32s3_hal::{
     spi::{master::Spi, SpiMode},
     timer::TimerGroup,
 };
-use esp_backtrace as _;
 use esp_println::println;
 mod spi_adapter;
 
