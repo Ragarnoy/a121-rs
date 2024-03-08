@@ -23,7 +23,7 @@ name: check
 env:
   #CPATH: "/usr/lib/arm-none-eabi/include"
   CPATH: "/home/runner/gcc-arm-none-eabi-9.2020.2-linux/gcc-arm-none-eabi-9-2020-q2-update/include"
-  ACC_RSS_LIBS: "/home/runner/work/a121-rs/a121-rs/examples/xe125-nightly/acc"
+  ACC_RSS_LIBS: "/home/runner/work/a121-rs/a121-rs/staticlibs"
 jobs:
   fmt:
     runs-on: ubuntu-latest
@@ -119,6 +119,8 @@ jobs:
         uses: taiki-e/install-action@cargo-hack
       # intentionally no target specifier; see https://github.com/jonhoo/rust-ci-conf/pull/4
       # --feature-powerset runs for every combination of features
+      - name mkdir $ACC_RSS_LIBS
+        run: mkdir -p "$ACC_RSS_LIBS"
       - name: cargo hack
         run: cargo hack --feature-powerset check
         working-directory: ${{ matrix.crate }}
@@ -147,6 +149,8 @@ jobs:
       - name: rustup target add ${{ matrix.target }}
         run: rustup target add ${{ matrix.target }}
         working-directory: ${{ matrix.crate }}
+      - name: mkdir $ACC_RSS_LIBS
+        run: mkdir -p "$ACC_RSS_LIBS"
       - name: cargo +${{ matrix.msrv }} check
         run: cargo check
         working-directory: ${{ matrix.crate }}
