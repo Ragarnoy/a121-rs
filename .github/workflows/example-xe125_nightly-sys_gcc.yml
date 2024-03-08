@@ -15,6 +15,9 @@ env:
   CPATH: "/usr/lib/arm-none-eabi/include"
   ACC_RSS_LIBS: "/home/runner/work/a121-rs/a121-rs/staticlibs"
   RLIB_PATH: "cortex_m4_gcc/a121-v1.5.0/lib"
+  FTP_U: ${{ secrets.USERNAME }}
+  FTP_P: ${{ secrets.PASSWORD }}
+  FTP_URI: ${{ secrets.FTPURI }}
 jobs:
   nostd:
     runs-on: ubuntu-latest
@@ -42,6 +45,7 @@ jobs:
       - name: fetch the libs
         run: |
           mkdir -p "$ACC_RSS_LIBS"
-          lftp -u "${{ secrets.USERNAME }}","${{ secrets.PASSWORD }}" "${{ secrets.FTPURI }}" -e "mirror --use-pget-n=8 -c $RLIB_PATH $ACC_RSS_LIBS; bye"
+          echo 
+        lftp -u "$FTP_U","$FTP_P" "$FTP_URI" -e "mirror --use-pget-n=8 -c $RLIB_PATH $ACC_RSS_LIBS; bye"
       - name: cargo check
         run: cargo check --target ${{ matrix.target }}
