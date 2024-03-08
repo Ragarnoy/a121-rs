@@ -26,11 +26,7 @@ jobs:
       matrix:
         target: [thumbv7em-none-eabihf]
     steps:
-      - shell: bash
-        env:
-        FTP_U: ${{ secrets.USERNAME }}
-        FTP_P: ${{ secrets.PASSWORD }}
-        FTP_URI: ${{ secrets.FTPURI }}
+
       - uses: actions/checkout@v4
         with:
           submodules: true
@@ -48,6 +44,11 @@ jobs:
           sed -i 's|^CPATH=.*||' .cargo/config.toml
           sed -i 's|^ACC_RSS_LIBS=.*||' .cargo/config.toml
       - name: fetch the libs
+        shell: bash
+        env:
+          FTP_U: ${{ secrets.USERNAME }}
+          FTP_P: ${{ secrets.PASSWORD }}
+          FTP_URI: ${{ secrets.FTPURI }}
         run: |
           mkdir -p "$ACC_RSS_LIBS"
           lftp -u "$FTP_U","$FTP_P" "$FTP_URI" -e "mirror --use-pget-n=8 -c $RLIB_PATH $ACC_RSS_LIBS; bye"
