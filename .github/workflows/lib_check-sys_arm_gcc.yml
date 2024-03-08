@@ -36,6 +36,7 @@ jobs:
       - name: mkdir $ACC_RSS_LIBS
         shell: bash
         run: |
+          echo $ACC_RSS_LIBS
           test ! -d "$ACC_RSS_LIBS" && mkdir -p "$ACC_RSS_LIBS"
       - name: cargo check
         run: cargo check --target ${{ matrix.target }} --no-default-features
