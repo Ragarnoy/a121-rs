@@ -45,7 +45,6 @@ jobs:
       - name: fetch the libs
         run: |
           mkdir -p "$ACC_RSS_LIBS"
-          echo 
-        lftp -u "$FTP_U","$FTP_P" "$FTP_URI" -e "mirror --use-pget-n=8 -c $RLIB_PATH $ACC_RSS_LIBS; bye"
+          lftp -u "$FTP_U","$FTP_P" "$FTP_URI" -e "mirror --use-pget-n=8 -c $RLIB_PATH $ACC_RSS_LIBS; bye"
       - name: cargo check
         run: cargo check --target ${{ matrix.target }}
