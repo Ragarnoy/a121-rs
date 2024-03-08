@@ -13,7 +13,8 @@ concurrency:
 name: example-xe125_nightly-sys_gcc
 env:
   CPATH: "/usr/lib/arm-none-eabi/include"
-  ACC_RSS_LIBS: "/home/runner/work/a121-rs/a121-rs/examples/xe125-nightly/acc"
+  ACC_RSS_LIBS: "/home/runner/work/a121-rs/a121-rs/staticlibs"
+  RLIB_PATH: "cortex_m4_gcc/a121-v1.5.0/lib"
 jobs:
   nostd:
     runs-on: ubuntu-latest
@@ -27,10 +28,10 @@ jobs:
           submodules: true
       - name: Install stable
         uses: dtolnay/rust-toolchain@nightly
-      - name: Install system arm gcc and clang
+      - name: Install system build deps
         run: |
           sudo apt-get update
-          sudo apt-get install gcc-arm-none-eabi clang
+          sudo apt-get install -y gcc-arm-none-eabi clang lftp
       - name: rustup target add ${{ matrix.target }}
         run: rustup target add ${{ matrix.target }}
       - name: cd to examples/xe125-nightly and remove config.toml vars
@@ -38,5 +39,11 @@ jobs:
           cd examples/xe125-nightly
           sed -i 's|^CPATH=.*||' .cargo/config.toml
           sed -i 's|^ACC_RSS_LIBS=.*||' .cargo/config.toml
+      - name: fetch the libs
+        run: |
+          mkdir -p "$ACC_RSS_LIBS"
+          lftp -u "${{ secrets.USERNAME }}","${{secrets.PASSWORD}}" "${{secrets.FTPURI}}" <<EOF
+          mirror --use-pget-n=8 -c "$RLIB_PATH" "$ACC_RSS_LIBS"
+          EOF
       - name: cargo check
         run: cargo check --target ${{ matrix.target }}
