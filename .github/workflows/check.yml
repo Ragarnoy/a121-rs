@@ -89,6 +89,8 @@ jobs:
       - name: rustup target add ${{ matrix.target }}
         run: rustup target add ${{ matrix.target }}
         working-directory: ${{ matrix.crate }}
+      -name: mkdir $ACC_RSS_LIBS
+       run: mkdir -p "$ACC_RSS_LIBS"
       - name: cargo doc
         run: cargo doc --no-deps --all-features
         working-directory: ${{ matrix.crate }}
