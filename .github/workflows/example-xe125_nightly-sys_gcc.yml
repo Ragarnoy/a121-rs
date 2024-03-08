@@ -15,9 +15,9 @@ env:
   CPATH: "/usr/lib/arm-none-eabi/include"
   ACC_RSS_LIBS: "/home/runner/work/a121-rs/a121-rs/staticlibs"
   RLIB_PATH: "cortex_m4_gcc/a121-v1.5.0/lib"
-  FTP_U: ${{ secrets.USERNAME }}
-  FTP_P: ${{ secrets.PASSWORD }}
-  FTP_URI: ${{ secrets.FTPURI }}
+    #FTP_U: ${{ secrets.USERNAME }}
+    #FTP_P: ${{ secrets.PASSWORD }}
+    #FTP_URI: ${{ secrets.FTPURI }}
 jobs:
   nostd:
     runs-on: ubuntu-latest
@@ -26,6 +26,11 @@ jobs:
       matrix:
         target: [thumbv7em-none-eabihf]
     steps:
+      - shell: bash
+        env:
+        FTP_U: ${{ secrets.USERNAME }}
+        FTP_P: ${{ secrets.PASSWORD }}
+        FTP_URI: ${{ secrets.FTPURI }}
       - uses: actions/checkout@v4
         with:
           submodules: true
