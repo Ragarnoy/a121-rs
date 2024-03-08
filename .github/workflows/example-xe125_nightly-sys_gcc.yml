@@ -15,9 +15,6 @@ env:
   CPATH: "/usr/lib/arm-none-eabi/include"
   ACC_RSS_LIBS: "/home/runner/work/a121-rs/a121-rs/staticlibs"
   RLIB_PATH: "cortex_m4_gcc/a121-v1.5.0/lib"
-    #FTP_U: ${{ secrets.USERNAME }}
-    #FTP_P: ${{ secrets.PASSWORD }}
-    #FTP_URI: ${{ secrets.FTPURI }}
 jobs:
   nostd:
     runs-on: ubuntu-latest
@@ -26,7 +23,6 @@ jobs:
       matrix:
         target: [thumbv7em-none-eabihf]
     steps:
-
       - uses: actions/checkout@v4
         with:
           submodules: true
@@ -50,10 +46,7 @@ jobs:
           FTP_P: ${{ secrets.PASSWORD }}
           FTP_URI: ${{ secrets.FTPURI }}
         run: |
-          mkdir -p "$ACC_RSS_LIBS"
-          echo $FTP_U | wc -c
-          echo $FTP_P | wc -c
-          echo $FTP_URI | wc -c
+          test ! -d "$ACC_RSS_LIBS" && mkdir "$ACC_RSS_LIBS"
           lftp -u "$FTP_U","$FTP_P" "$FTP_URI" -e "mirror --use-pget-n=8 -c $RLIB_PATH $ACC_RSS_LIBS; bye"
       - name: cargo check
         run: cargo check --target ${{ matrix.target }}
