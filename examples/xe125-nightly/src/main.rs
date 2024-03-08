@@ -46,14 +46,14 @@ static mut SPI_DEVICE: Option<RefCell<SpiAdapter<SpiDeviceMutex>>> = None;
 
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
-    info!("Starting");
+    info!("Starting...");
     let p = embassy_stm32::init(xm125_clock_config());
 
     let enable = Output::new(p.PB12, Level::Low, Speed::VeryHigh); // ENABLE on PB12
     let cs_pin = Output::new(p.PB0, Level::High, Speed::VeryHigh);
     let input = Input::new(p.PB3, Pull::Up);
     let interrupt = ExtiInput::new(input, p.EXTI3); // INTERRUPT on PB3 used as 'ready' signal
-    info!("GPIO initialized");
+    info!("GPIO initialized.");
 
     let spi = Spi::new(
         p.SPI1,
@@ -65,7 +65,7 @@ async fn main(_spawner: Spawner) {
         xm125_spi_config(),
     );
     let exclusive_device = ExclusiveDevice::new(spi, cs_pin, Delay);
-    info!("SPI initialized");
+    info!("SPI initialized.");
 
     unsafe { SPI_DEVICE = Some(RefCell::new(SpiAdapter::new(exclusive_device))) };
     let spi_mut_ref = unsafe { SPI_DEVICE.as_mut().unwrap() };
@@ -73,14 +73,14 @@ async fn main(_spawner: Spawner) {
     info!("RSS Version: {}", rss_version());
 
     let mut radar = Radar::new(1, spi_mut_ref.get_mut(), interrupt, enable, Delay).await;
-    info!("Radar enabled");
+    info!("Radar enabled.");
     let mut calibration = radar.calibrate().await.unwrap();
-    info!("Calibration complete!");
+    info!("Calibration complete.");
     let mut radar = radar.prepare_sensor(&mut calibration).unwrap();
     let mut distance = RadarDistanceDetector::new(&mut radar);
     let mut buffer = vec![0u8; distance.get_distance_buffer_size()];
     let mut static_cal_result = vec![0u8; distance.get_static_result_buffer_size()];
-    trace!("Calibrating detector");
+    trace!("Calibrating detector...");
     let mut dynamic_cal_result = distance
         .calibrate_detector(&calibration, &mut buffer, &mut static_cal_result)
         .await
@@ -110,7 +110,7 @@ async fn main(_spawner: Spawner) {
                     );
                 }
                 if res.calibration_needed() {
-                    info!("Calibration needed");
+                    info!("Calibration needed.");
                     let calibration = distance.calibrate().await.unwrap();
                     dynamic_cal_result = distance
                         .update_calibration(&calibration, &mut buffer)
@@ -118,12 +118,12 @@ async fn main(_spawner: Spawner) {
                         .unwrap();
                 }
             }
-            Err(_) => warn!("Failed to process data"),
+            Err(_) => warn!("Failed to process data."),
         }
 
         if Instant::now() - last_print >= embassy_time::Duration::from_secs(1) {
             info!(
-                "[Measurement frames]:[Frames with at least 1 distance]:[Total Distances] per second: \n {}:{}:{}",
+                "[Measurement frames]:[Frames with at least 1 distance]:[Total distances] per second: \n {}:{}:{}",
                 counter, counter_d, counter_dt
             );
             counter = 0;
