@@ -3,3 +3,4 @@ target
 /.idea/*
 examples/*/target
 /Cargo.lock
+examples/*/acc/*
