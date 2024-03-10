@@ -8,6 +8,7 @@ use crate::rss_bindings::{
     ACC_DETECTOR_DISTANCE_RESULT_MAX_NUM_DISTANCES,
 };
 
+/// Enumerates possible errors that can occur during the processing of radar data.
 #[derive(Debug, Copy, Clone, defmt::Format)]
 pub enum ProcessDataError {
     CalibrationNeeded,
@@ -15,12 +16,17 @@ pub enum ProcessDataError {
     Unavailable,
 }
 
+/// Represents a single detected distance and its strength.
 #[derive(Debug, Default, Copy, Clone, defmt::Format)]
 pub struct Distance {
     pub distance: f32,
     pub strength: f32,
 }
 
+/// Encapsulates the results of a distance detection operation.
+///
+/// This struct contains the distances detected by the radar, along with metadata
+/// such as the temperature during the detection and whether calibration is needed.
 pub struct DistanceResult<'a> {
     result: ProcessingResult,
     metadata: ProcessingMetaData,
@@ -33,6 +39,7 @@ pub struct DistanceResult<'a> {
 }
 
 impl<'a> DistanceResult<'a> {
+    /// Creates a new instance of `DistanceResult`.
     pub fn new(config: &'a RadarConfig) -> Self {
         let proc_result = ProcessingResult::new();
         let proc_metadata = ProcessingMetaData::new();
@@ -74,35 +81,46 @@ impl<'a> DistanceResult<'a> {
         self.temperature = inner.temperature;
     }
 
+    /// Returns the detected distances.
     pub fn distances(&self) -> &[Distance] {
         &self.distances[0..self.num_distances as usize]
     }
 
+    /// Returns the near start edge status.
     pub fn near_start_edge_status(&self) -> bool {
         self.near_start_edge_status
     }
 
+    /// Returns whether calibration is needed.
     pub fn calibration_needed(&self) -> bool {
         self.calibration_needed
     }
 
+    /// Returns the temperature during the detection.
     pub fn temperature(&self) -> i16 {
         self.temperature
     }
 
+    /// Returns the number of detected distances.
     pub fn num_distances(&self) -> u8 {
         self.num_distances
     }
 
+    /// Returns the processing result.
     pub fn processing_result(&self) -> &ProcessingResult {
         &self.result
     }
 
+    /// Returns the processing metadata.
     pub fn processing_metadata(&self) -> &ProcessingMetaData {
         &self.metadata
     }
 }
 
+/// Represents the dynamic part of the detector calibration result.
+///
+/// This struct encapsulates the dynamic calibration data that may need to be updated
+/// based on temperature changes or other factors.
 pub struct DynamicResult {
     pub(super) inner: acc_detector_cal_result_dynamic_t,
 }
@@ -117,6 +135,10 @@ impl Default for DynamicResult {
     }
 }
 
+/// Stores sizes related to distance detector operations.
+///
+/// This struct holds information about the required buffer sizes for distance detection
+/// operations, including the static part of the detector calibration result.
 #[derive(Debug, defmt::Format)]
 pub(super) struct DistanceSizes {
     pub buffer_size: usize,
@@ -124,7 +146,7 @@ pub(super) struct DistanceSizes {
 }
 
 impl DistanceSizes {
-    pub fn new(handle: &InnerRadarDistanceDetector) -> Self {
+    pub(super) fn new(handle: &InnerRadarDistanceDetector) -> Self {
         let mut buffer_size: u32 = 0;
         let mut detector_cal_result_static_size: u32 = 0;
 

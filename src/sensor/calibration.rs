@@ -13,10 +13,6 @@ impl CalibrationInfo {
         self.inner.temperature
     }
 
-    pub fn ptr(&self) -> *const acc_cal_info_t {
-        &self.inner
-    }
-
     /// Returns a mutable pointer to the inner `acc_cal_info_t` struct.
     /// # Safety
     /// This function is unsafe because it returns a raw pointer.

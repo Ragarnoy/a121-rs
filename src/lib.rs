@@ -3,18 +3,23 @@
 
 extern crate alloc;
 
-/// Configuration for the XM125
+/// Configuration for the radar sensor
 pub mod config;
 #[cfg(any(feature = "distance", feature = "presence"))]
+/// Detector modules for the radar sensor
 pub mod detector;
-/// Hardware Abstraction Layer for the XM125
+/// Hardware Abstraction Layer equivalent to the C API
 pub mod hal;
 #[cfg(feature = "libm")]
+/// Math functions definitions from the libm crate
 pub mod libm;
+/// Number definitions for the radar sensor
 pub mod num;
+/// Processing modules for the radar sensor
 pub mod processing;
+/// Main radar module, interfacing with the radar sensor
 pub mod radar;
-/// C Bindings to the XM125 SDK
+/// C Bindings to the Acconeer Radar System Software
 mod rss_bindings;
-/// Module to control the XM125 sensor
-pub mod sensor;
+/// Sensor module for the radar sensor
+mod sensor;
