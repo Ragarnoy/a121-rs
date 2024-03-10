@@ -24,6 +24,18 @@ _a121-rs_ comes with a host of features designed to make working with the A121 s
 - **Distance Measurement**: Configure the radar for precise distance measurements to objects.
 - **Presence Detection**: Detect the presence of objects or people in a configured detection zone. (Soon)
 
+## Dependencies
+
+The following dependencies are required to use _a121-rs_:
+- 'arm-none-eabi-gcc' to build the C wrapper (for stm32 examples)
+- Acconeer A121 Static Library (and detector libraries for distance and presence detection if the feature is enabled)
+
+## Supported Targets
+Supported platforms depend on the availability of the Acconeer A121 Static Library.
+Currently, the following targets are supported:
+- arm-none-eabihf (gcc, armcc, armclang)
+- xtensa-esp32-none-elf
+
 ## Getting Started
 
 To include _a121-rs_ in your project, add the following to your `Cargo.toml`:
