@@ -19,17 +19,17 @@ struct InnerRadarDistanceDetector {
 }
 
 impl InnerRadarDistanceDetector {
-    pub fn new(config: &RadarDistanceConfig) -> Self {
+    fn new(config: &RadarDistanceConfig) -> Self {
         Self {
             inner: unsafe { acc_detector_distance_create(config.inner) },
         }
     }
 
-    pub fn inner(&self) -> *const acc_detector_distance_handle {
+    fn inner(&self) -> *const acc_detector_distance_handle {
         self.inner
     }
 
-    pub fn inner_mut(&mut self) -> *mut acc_detector_distance_handle {
+    fn inner_mut(&mut self) -> *mut acc_detector_distance_handle {
         self.inner
     }
 }
@@ -40,14 +40,17 @@ impl Drop for InnerRadarDistanceDetector {
     }
 }
 
+/// The main structure representing the radar distance detector.
 pub struct RadarDistanceDetector<'radar, SINT, ENABLE, DLY>
 where
     SINT: Wait,
     ENABLE: OutputPin,
     DLY: DelayNs,
 {
+    /// Reference to the radar system, configured and ready for operation.
     pub radar: &'radar mut Radar<Ready, SINT, ENABLE, DLY>,
     inner: InnerRadarDistanceDetector,
+    /// Configuration for the radar distance detection.
     pub config: RadarDistanceConfig,
 }
 
@@ -57,6 +60,7 @@ where
     ENABLE: OutputPin,
     DLY: DelayNs,
 {
+    /// Constructs a new radar distance detector with default configuration.
     pub fn new(radar: &'radar mut Radar<Ready, SINT, ENABLE, DLY>) -> Self {
         let config = RadarDistanceConfig::default();
         let inner = InnerRadarDistanceDetector::new(&config);
@@ -68,6 +72,7 @@ where
         }
     }
 
+    /// Performs calibration of the radar distance detector.
     pub async fn calibrate_detector(
         &mut self,
         sensor_cal_result: &CalibrationResult,
@@ -122,14 +127,18 @@ where
         Ok(detector_cal_result_dynamic)
     }
 
+    /// Returns the size of the buffer needed for static calibration results.
     pub fn get_static_result_buffer_size(&self) -> usize {
         DistanceSizes::new(&self.inner).detector_cal_result_static_size
     }
 
+    /// Returns the size of the buffer needed for distance detection.
     pub fn get_distance_buffer_size(&self) -> usize {
         DistanceSizes::new(&self.inner).buffer_size
     }
 
+    /// Updates the calibration dynamically based on new sensor data.
+    /// This function is intended to be used when a recalibration is necessary due to changes in the operating environment.
     pub async fn update_calibration(
         &mut self,
         sensor_cal_result: &CalibrationResult,
@@ -179,6 +188,9 @@ where
         }
     }
 
+    /// Prepares the detector for a measurement operation.
+    ///
+    /// This function must be called before performing a distance measurement to configure the detector properly.
     pub fn prepare_detector(
         &mut self,
         sensor_cal_result: &CalibrationResult,
@@ -200,14 +212,23 @@ where
         }
     }
 
+    /// Performs a distance measurement operation asynchronously.
+    ///
+    /// This function initiates a measurement operation, returning the results asynchronously.
     pub async fn measure(&mut self, data: &mut [u8]) -> Result<(), SensorError> {
         self.radar.measure(data).await
     }
 
+    /// Calibrates the associated radar asynchronously.
+    ///
+    /// This function performs a calibration operation on the radar, necessary for accurate distance measurements.
     pub async fn calibrate(&mut self) -> Result<CalibrationResult, SensorError> {
         self.radar.calibrate().await
     }
 
+    /// Processes the data collected from a distance measurement operation.
+    ///
+    /// This function analyzes the raw data collected during a measurement operation, extracting distance information.
     pub fn process_data(
         &mut self,
         buffer: &mut [u8],
@@ -241,6 +262,7 @@ where
         }
     }
 
+    /// Prints the status of the radar distance detector.
     pub fn print_status(&mut self) {
         self.radar.check_status()
     }
