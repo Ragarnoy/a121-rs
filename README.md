@@ -31,17 +31,14 @@ The following dependencies are required to use _a121-rs_:
 # Ubuntu
 sudo apt-get install gcc-arm-none-eabi
 ```
-- 'xtensa-esp32-elf-gcc' to build the C wrapper (for esp32 examples)
-```bash
-# Ubuntu
-sudo apt-get install gcc-xtensa-esp32-elf
-```
+
+The esp example relies on the espup toolchain. Refer to the esp-rs project for configuration instructions.  
 
 ## Supported Targets
 Supported platforms depend on the availability of the Acconeer A121 Static Library.
 Currently, the following targets are supported:
 - arm-none-eabihf (gcc, armcc, armclang)
-- xtensa-esp32-none-elf
+- esp xtensa
 
 ## Getting Started
 
