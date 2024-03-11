@@ -29,6 +29,7 @@ impl RadarState for Enabled {}
 impl RadarState for Ready {}
 impl RadarState for Hibernating {}
 
+/// Error type for transitioning between radar states
 pub struct TransitionError<STATE, SINT, ENABLE, DLY>
 where
     SINT: Wait,
@@ -291,6 +292,7 @@ where
     }
 }
 
+/// Get the RSS version of the sensor
 pub fn rss_version() -> RssVersion {
     let version = unsafe { acc_version_get_hex() };
     RssVersion::new(version)
