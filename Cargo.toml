@@ -9,7 +9,7 @@ categories = ["embedded", "no-std"]
 readme = "README.md"
 license = "MIT"
 edition = "2021"
-version = "0.1.1"
+version = "0.1.2"
 links = "acconeer_a121"
 rust-version = "1.75"
 

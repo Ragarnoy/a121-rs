@@ -46,7 +46,7 @@ To include _a121-rs_ in your project, add the following to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-a121-rs = "0.1.0"
+a121-rs = "0.1"
 ```
 
 The static library expects implementations of math functions like `sqrt` and `sin` to be available.
