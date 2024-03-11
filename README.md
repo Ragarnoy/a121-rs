@@ -1,5 +1,3 @@
-Based on your example, here's a structured `README.md` for the `a121-rs` repository tailored to match the style you provided:
-
 # a121-rs
 
 [![docs.rs](https://docs.rs/a121-rs/badge.svg)](https://docs.rs/a121-rs)
