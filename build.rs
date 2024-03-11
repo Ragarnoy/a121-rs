@@ -8,10 +8,9 @@ fn main() {
         .expect("rss directory not found");
 
     // 'acc_rss_libs' directory is supplied by the user, it contains the .a files compiled for their target
-    let acc_rss_libs =
-        PathBuf::from(env::var("ACC_RSS_LIBS").expect("Error: env variable ACC_RSS_LIBS"))
-            .canonicalize()
-            .expect("Error pointing to Acconeer static libs path.");
+    let acc_rss_libs = PathBuf::from(env::var("ACC_RSS_LIBS").unwrap_or_else(|_| ".".to_string()))
+        .canonicalize()
+        .expect("Error pointing to Acconeer static libs path.");
 
     println!("cargo:rustc-link-search={}", acc_rss_libs.display());
     println!("cargo:rustc-link-lib=static=acconeer_a121");
