@@ -108,11 +108,11 @@ async fn init(_spawner: Spawner) {
                 if res.num_distances() > 0 {
                     measurements += 1;
                     distances += res.num_distances();
-                    //println!(
-                    //    "{} Distances found:\n{:?}",
-                    //    res.num_distances(),
-                    //    res.distances()
-                    //);
+                    println!(
+                        "{} Distances found:\n{:?}",
+                        res.num_distances(),
+                        res.distances()
+                    );
                 }
                 if res.calibration_needed() {
                     println!("Calibration needed.");
