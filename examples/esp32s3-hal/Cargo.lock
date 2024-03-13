@@ -4,13 +4,13 @@ version = 3
 
 [[package]]
 name = "a121-rs"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "bindgen",
  "cc",
  "defmt",
  "defmt-rtt",
- "embassy-sync 0.5.0 (git+https://github.com/embassy-rs/embassy)",
+ "embassy-sync",
  "embedded-hal 1.0.0",
  "embedded-hal-async",
  "num",
@@ -307,18 +307,6 @@ checksum = "dd938f25c0798db4280fcd8026bf4c2f48789aebf8f77b6e5cf8a7693ba114ec"
 dependencies = [
  "cfg-if",
  "critical-section",
- "embedded-io-async",
- "futures-util",
- "heapless",
-]
-
-[[package]]
-name = "embassy-sync"
-version = "0.5.0"
-source = "git+https://github.com/embassy-rs/embassy#7718d66053f6b8aef7c5d56652e29d7142eee072"
-dependencies = [
- "cfg-if",
- "critical-section",
  "defmt",
  "embedded-io-async",
  "futures-util",
@@ -507,9 +495,9 @@ dependencies = [
 
 [[package]]
 name = "esp-hal"
-version = "0.16.0"
+version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0e021610c11f106869f382f532fb81de0df98fd2b41299deba81bb62e9c4c4f8"
+checksum = "cc3e9b3333d2ae42f5c9b4890e162cb756fb1b067ab5f642b89fc9f29be424fa"
 dependencies = [
  "basic-toml",
  "bitfield",
@@ -519,7 +507,7 @@ dependencies = [
  "document-features",
  "embassy-executor",
  "embassy-futures",
- "embassy-sync 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "embassy-sync",
  "embassy-time-driver",
  "embedded-can",
  "embedded-dma",
