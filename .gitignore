@@ -6,4 +6,3 @@ target
 examples/*/target
 /Cargo.lock
 examples/*/acc/*
-/lib/*.a

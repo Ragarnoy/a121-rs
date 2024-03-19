@@ -31,7 +31,7 @@ The following dependencies are required to use _a121-rs_:
 # Ubuntu
 sudo apt-get install gcc-arm-none-eabi
 ```
-- 'riscv32-unknown-elf-gcc' to build the C wrapper for the esp32c6 (instructions tbd)
+- 'riscv32-esp-elf' to build the C wrapper for the esp32c6 (install via espup)
 
 The esp example relies on the espup toolchain. Refer to the esp-rs project for configuration instructions.  
 
@@ -40,7 +40,7 @@ Supported platforms depend on the availability of the Acconeer A121 Static Libra
 Currently, the following targets are supported:
 - arm-none-eabihf (gcc, armcc, armclang)
 - esp xtensa
-- riscv32imac (esp32c6)
+- riscv32-esp-elf (via espup)
 
 ## Getting Started
 

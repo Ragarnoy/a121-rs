@@ -4,9 +4,18 @@ runner = "espflash flash --monitor"
 
 [env]
 ESP_LOGLEVEL="INFO"
+MCU="esp32c6"
+CROSS_COMPILE="riscv32-esp-elf"
+ACC_RSS_LIBS={ value = "acc", relative = true }
+
 [build]
 rustflags = [
   "-C", "link-arg=-Tlinkall.x",
+  #"-C", "link-arg=-Tdefmt.x",
+  "-C", "link-arg=-Tlibgcc.x",
+  "-C", "link-arg=-nostartfiles",
+  "-C", "link-arg=-lm",
+  #"-C", "link-arg=-lc",
 
   # Required to obtain backtraces (e.g. when using the "esp-backtrace" crate.)
   # NOTE: May negatively impact performance of produced code
