@@ -31,7 +31,10 @@ fn main() {
     }
 
     let mut bindings = bindgen::Builder::default()
-        .clang_arg(format!("-I{}", headers.display()))
+        .clang_args(&[
+            format!("-I{}", headers.display()),
+            format!("-I/home/leon/.rustup/toolchains/esp/riscv32-esp-elf/esp-12.2.0_20230208/riscv32-esp-elf/riscv32-esp-elf/include"), // TODO get this dynamically, derive from riscv32-esp-elf-gcc path?
+            ])
         .layout_tests(false)
         .generate_cstr(true)
         .use_core();
