@@ -26,21 +26,18 @@ _a121-rs_ comes with a host of features designed to make working with the A121 s
 
 The following dependencies are required to use _a121-rs_:
 - Acconeer A121 Static Library (and detector libraries for distance and presence detection if the feature is enabled)
-- 'arm-none-eabi-gcc' to build the C wrapper (for stm32 examples)
+- 'arm-none-eabi-gcc' to build the C wrapper for the stm32 examples
 ```bash
 # Ubuntu
 sudo apt-get install gcc-arm-none-eabi
 ```
-- 'riscv32-esp-elf' to build the C wrapper for the esp32c6 (install via espup)
-
-The esp example relies on the espup toolchain. Refer to the esp-rs project for configuration instructions.  
+- esp toolschains to build the esp examples, install via espup (https://github.com/esp-rs/espup) 
 
 ## Supported Targets
 Supported platforms depend on the availability of the Acconeer A121 Static Library.
 Currently, the following targets are supported:
 - arm-none-eabihf (gcc, armcc, armclang)
-- esp xtensa
-- riscv32-esp-elf (via espup)
+- esp xtensa and riscv
 
 ## Getting Started
 
@@ -69,6 +66,9 @@ nightly-logger | If the C wrapper for logging does not compile with stable rust,
 
 Check out the `examples/` directory for demonstrations on how to use _a121-rs_ with various microcontroller units.
 These examples cover basic setups and common use cases to help you get started quickly.
+
+**Note:** For the esp32c6 example, you need to manually set your `CPATH` to the path of the include files, i.e. `CPATH="/home/<user>/.rustup/toolchains/esp/riscv32-esp-elf/esp-12.2.0_20230208/riscv32-esp-elf/riscv32-esp-elf/include"
+`
 
 ## Development and Contribution
 
