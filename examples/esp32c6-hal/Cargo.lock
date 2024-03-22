@@ -13,6 +13,7 @@ dependencies = [
  "embassy-sync",
  "embedded-hal 1.0.0",
  "embedded-hal-async",
+ "libm",
  "num",
 ]
 
@@ -561,6 +562,7 @@ version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e98f0f58453dd2ce08d99228fc8757fad39d05dfd26643665d1093b8844f42cc"
 dependencies = [
+ "defmt",
  "log",
  "portable-atomic",
 ]
@@ -622,6 +624,7 @@ name = "esp32c6-hal"
 version = "0.1.0"
 dependencies = [
  "a121-rs",
+ "defmt",
  "embassy-executor",
  "embassy-time",
  "embedded-hal 1.0.0",
@@ -631,6 +634,8 @@ dependencies = [
  "esp-hal",
  "esp-println",
  "log",
+ "static_cell",
+ "tinyrlibc",
 ]
 
 [[package]]
@@ -830,6 +835,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "libm"
+version = "0.2.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4ec2a862134d2a7d32d7983ddcdd1c4923530833c9f2ea1a44fc5fa473989058"
+
+[[package]]
 name = "linked_list_allocator"
 version = "0.10.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -987,6 +998,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "da0df0e5185db44f69b44f26786fe401b6c293d1907744beaa7fa62b2e5a517a"
 dependencies = [
  "autocfg",
+ "libm",
 ]
 
 [[package]]
@@ -1243,6 +1255,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
+name = "static_cell"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fa6ba4cf83bf80d3eb25f098ea5e790a0a1fcb5e357442259b231e412c2d3ca0"
+dependencies = [
+ "portable-atomic",
+]
+
+[[package]]
 name = "strsim"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1329,6 +1350,14 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.53",
+]
+
+[[package]]
+name = "tinyrlibc"
+version = "0.3.0"
+source = "git+https://github.com/rust-embedded-community/tinyrlibc.git#83ae4a94fa7c9fa35ecebd1d6716f708d01f3e9c"
+dependencies = [
+ "cc",
 ]
 
 [[package]]

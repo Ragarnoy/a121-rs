@@ -1,8 +1,9 @@
 [target.riscv32imac-unknown-none-elf]
-runner = "espflash flash --monitor"
+runner = "espflash flash --monitor --log-format defmt"
 
 
 [env]
+DEFMT_LOG="trace"
 ESP_LOGLEVEL="INFO"
 MCU="esp32c6"
 CROSS_COMPILE="riscv32-esp-elf"
@@ -11,6 +12,7 @@ ACC_RSS_LIBS={ value = "acc", relative = true }
 [build]
 rustflags = [
   "-C", "link-arg=-Tlinkall.x",
+  "-C", "link-arg=-Tdefmt.x",
 
   # Required to obtain backtraces (e.g. when using the "esp-backtrace" crate.)
   # NOTE: May negatively impact performance of produced code
