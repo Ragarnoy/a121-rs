@@ -20,6 +20,7 @@ use esp_hal::{
     spi::{master::Spi, SpiMode},
 };
 mod spi_adapter;
+mod muslc;
 use a121_rs::radar::Radar;
 use a121_rs::detector::distance::RadarDistanceDetector;
 
