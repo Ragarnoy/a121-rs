@@ -4,6 +4,7 @@
 
 extern crate alloc;
 
+use alloc::vec;
 use core::mem::MaybeUninit;
 use esp_backtrace as _;
 use embassy_executor::Spawner;
@@ -20,6 +21,7 @@ use esp_hal::{
 };
 mod spi_adapter;
 use a121_rs::radar::Radar;
+use a121_rs::detector::distance::RadarDistanceDetector;
 
 extern crate tinyrlibc; // this provides malloc and free via the global allocator
 
@@ -107,4 +109,60 @@ async fn main(spawner: Spawner) {
     let mut calibration = radar.calibrate().await.unwrap();
     let mut radar = radar.prepare_sensor(&mut calibration).unwrap();
     log::info!("Radar calibrated and prepared.");
+
+    let mut distance = RadarDistanceDetector::new(&mut radar);
+    let mut buffer = vec![0u8; distance.get_distance_buffer_size()];
+    let mut static_cal_result = vec![0u8; distance.get_static_result_buffer_size()];
+    log::info!("Starting detector calibration...");
+    let mut dynamic_cal_result = distance
+        .calibrate_detector(&calibration, &mut buffer, &mut static_cal_result)
+        .await
+        .unwrap();
+
+    let mut frames = 0;
+    let mut measurements = 0;
+    let mut distances = 0;
+    let mut last_print = Instant::now();
+
+    loop {
+        distance
+            .prepare_detector(&calibration, &mut buffer)
+            .unwrap();
+        distance.measure(&mut buffer).await.unwrap();
+
+        match distance.process_data(&mut buffer, &mut static_cal_result, &mut dynamic_cal_result) {
+            Ok(res) => {
+                frames += 1;
+                if res.num_distances() > 0 {
+                    measurements += 1;
+                    distances += res.num_distances();
+                    log::info!(
+                        "{} Distances found:\n{:?}",
+                        res.num_distances(),
+                        res.distances()
+                    );
+                }
+                if res.calibration_needed() {
+                    log::info!("Calibration needed.");
+                    let calibration = distance.calibrate().await.unwrap();
+                    dynamic_cal_result = distance
+                        .update_calibration(&calibration, &mut buffer)
+                        .await
+                        .unwrap();
+                }
+            }
+            Err(_) => log::error!("Failed to process data."),
+        }
+
+        if Instant::now() - last_print >= embassy_time::Duration::from_secs(1) {
+            log::info!(
+                "[Measurement frames]:[Frames with at least 1 distance]:[Total distances] per second: \n {}:{}:{}",
+                frames, measurements, distances
+            );
+            frames = 0;
+            measurements = 0;
+            distances = 0;
+            last_print = Instant::now();
+        }
+    }
 }
