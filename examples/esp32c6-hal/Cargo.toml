@@ -1,0 +1,40 @@
+[package]
+name = "esp32c6-hal"
+version = "0.1.0"
+authors = ["Leon <12817042+thedevleon@users.noreply.github.com>"]
+edition = "2021"
+license = "MIT"
+
+[dependencies]
+esp-backtrace = { version = "0.11.0", features = [
+    "esp32c6",
+    "exception-handler",
+    "panic-handler",
+    "println",
+] }
+esp-hal = { version = "0.16.0", features = [ "esp32c6", "async", "embassy", "embassy-time-timg0", "embassy-executor-thread"] }
+esp-println = { version = "0.9.0", default-features = false, features = ["esp32c6", "log", "jtag-serial", "defmt-espflash"] }
+log = { version = "0.4.20" }
+esp-alloc = { version = "0.3.0" }
+embassy-executor = {version = "0.5.0", features = ["nightly"] }
+embassy-time = {version = "0.3.0", default-features = false , features = ["generic-queue-8"]}
+embedded-hal-bus = { version = "0.1.0", features = ["async"] }
+embedded-hal = "1.0.0"
+a121-rs = { path = "../../", features = ["distance", "nightly-logger", "libm"] }
+static_cell = { version = "2.0.0", features = ["nightly"] }
+defmt = "0.3.5"
+tinyrlibc = { git = "https://github.com/rust-embedded-community/tinyrlibc.git", version = "0.3.0", features = ["alloc"] }
+
+[profile.dev]
+# Rust debug is too slow. 
+# For debug builds always builds with some optimization
+opt-level = "s"
+
+[profile.release]
+codegen-units = 1 # LLVM can perform better optimizations using a single thread
+debug = 2
+debug-assertions = false
+incremental = false
+lto = 'fat'
+opt-level = 's'
+overflow-checks = false
