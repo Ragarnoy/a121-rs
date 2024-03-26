@@ -8,7 +8,7 @@ use alloc::vec;
 use core::mem::MaybeUninit;
 use esp_backtrace as _;
 use embassy_executor::Spawner;
-use embassy_time::{Duration, Timer, Delay, Instant};
+use embassy_time::{Delay, Instant};
 use embedded_hal_bus::spi::ExclusiveDevice;
 use esp_hal::{
     clock::ClockControl,
@@ -20,9 +20,10 @@ use esp_hal::{
     spi::{master::Spi, SpiMode},
 };
 mod spi_adapter;
-mod muslc;
+mod mulsc;
+use a121_rs::config::profile::RadarProfile::AccProfile5;
 use a121_rs::radar::Radar;
-use a121_rs::detector::distance::RadarDistanceDetector;
+use a121_rs::detector::distance::{RadarDistanceDetector, config::*};
 
 extern crate tinyrlibc; // this provides malloc and free via the global allocator
 
@@ -38,16 +39,8 @@ fn init_heap() {
     }
 }
 
-// #[embassy_executor::task]
-// async fn run() {
-//     loop {
-//         esp_println::println!("Hello world from embassy using esp-hal-async!");
-//         Timer::after(Duration::from_millis(1_000)).await;
-//     }
-// }
-
 #[main]
-async fn main(spawner: Spawner) {
+async fn main(_spawner: Spawner) {
     init_heap();
     let peripherals = Peripherals::take();
     let system = peripherals.SYSTEM.split();
@@ -64,8 +57,6 @@ async fn main(spawner: Spawner) {
     esp_println::logger::init_logger_from_env();
 
     log::info!("A121 library version: {}", a121_rs::radar::rss_version());
-
-    //spawner.spawn(run()).ok();
 
     // XE121
     /*
@@ -111,7 +102,19 @@ async fn main(spawner: Spawner) {
     let mut radar = radar.prepare_sensor(&mut calibration).unwrap();
     log::info!("Radar calibrated and prepared.");
 
-    let mut distance = RadarDistanceDetector::new(&mut radar);
+    let mut distance_config = RadarDistanceConfig::default();
+    distance_config.set_interval(0.2..=3.0);
+    distance_config.set_max_step_length(MaxStepLenght::ProfileBased);
+    distance_config.set_max_profile(AccProfile5);
+    distance_config.set_reflector_shape(ReflectorShape::Generic);
+    distance_config.set_peak_sorting_method(PeakSortingMethod::Strength);
+    distance_config.set_threshold_method(ThresholdMethod::Cfar);
+    distance_config.set_threshold_sensitivity(0.5);
+    distance_config.set_signal_quality(15.0);
+    distance_config.set_close_range_leakage_cancelation(false);
+
+
+    let mut distance = RadarDistanceDetector::with_config(&mut radar, distance_config);
     let mut buffer = vec![0u8; distance.get_distance_buffer_size()];
     let mut static_cal_result = vec![0u8; distance.get_static_result_buffer_size()];
     log::info!("Starting detector calibration...");
