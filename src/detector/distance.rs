@@ -73,7 +73,10 @@ where
     }
 
     /// Constructs a new radar distance detector with the provided configuration.
-    pub fn with_config(radar: &'radar mut Radar<Ready, SINT, ENABLE, DLY>, config: RadarDistanceConfig) -> Self {
+    pub fn with_config(
+        radar: &'radar mut Radar<Ready, SINT, ENABLE, DLY>,
+        config: RadarDistanceConfig,
+    ) -> Self {
         let inner = InnerRadarDistanceDetector::new(&config);
         trace!("{:?}", DistanceSizes::new(&inner));
         Self {

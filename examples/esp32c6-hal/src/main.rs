@@ -6,24 +6,24 @@ extern crate alloc;
 
 use alloc::vec;
 use core::mem::MaybeUninit;
-use esp_backtrace as _;
 use embassy_executor::Spawner;
 use embassy_time::{Delay, Instant};
 use embedded_hal_bus::spi::ExclusiveDevice;
+use esp_backtrace as _;
 use esp_hal::{
     clock::ClockControl,
     embassy::{self},
+    gpio::{self, IO},
     peripherals::Peripherals,
     prelude::*,
-    timer::TimerGroup,
-    gpio::{self, IO},
     spi::{master::Spi, SpiMode},
+    timer::TimerGroup,
 };
+mod mulsc3;
 mod spi_adapter;
-mod mulsc;
 use a121_rs::config::profile::RadarProfile::AccProfile5;
+use a121_rs::detector::distance::{config::*, RadarDistanceDetector};
 use a121_rs::radar::Radar;
-use a121_rs::detector::distance::{RadarDistanceDetector, config::*};
 
 extern crate tinyrlibc; // this provides malloc and free via the global allocator
 
@@ -60,17 +60,17 @@ async fn main(_spawner: Spawner) {
 
     // XE121
     /*
-        #define GPIO_SEL0 4
-        #define GPIO_SEL1 3
-        #define GPIO_SEL2 2
-        #define GPIO_ENABLE 0
+       #define GPIO_SEL0 4
+       #define GPIO_SEL1 3
+       #define GPIO_SEL2 2
+       #define GPIO_ENABLE 0
 
-        #define GPIO_INTERRUPT 23
-        #define GPIO_SCLK 19
-        #define GPIO_MOSI 21
-        #define GPIO_MISO 20
-        #define GPIO_CS   22
-     */
+       #define GPIO_INTERRUPT 23
+       #define GPIO_SCLK 19
+       #define GPIO_MOSI 21
+       #define GPIO_MISO 20
+       #define GPIO_CS   22
+    */
 
     // this is only required for the XE121
     let mut sel0 = io.pins.gpio4.into_push_pull_output();
@@ -112,7 +112,6 @@ async fn main(_spawner: Spawner) {
     distance_config.set_threshold_sensitivity(0.5);
     distance_config.set_signal_quality(15.0);
     distance_config.set_close_range_leakage_cancelation(false);
-
 
     let mut distance = RadarDistanceDetector::with_config(&mut radar, distance_config);
     let mut buffer = vec![0u8; distance.get_distance_buffer_size()];
