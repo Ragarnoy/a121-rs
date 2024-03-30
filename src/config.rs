@@ -13,7 +13,7 @@ use profile::RadarProfile;
 use crate::config::hwaas::Hwaas;
 use crate::config::prf::PulseRepetitionFrequency;
 use crate::config::subsweep::Subsweep;
-use crate::rss_bindings::*;
+use a121_sys::*;
 
 /// Module for radar configuration errors
 mod error;

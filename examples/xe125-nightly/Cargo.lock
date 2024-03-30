@@ -6,6 +6,7 @@ version = 3
 name = "a121-rs"
 version = "0.1.2"
 dependencies = [
+ "a121-sys",
  "bindgen",
  "cc",
  "defmt",
@@ -14,6 +15,16 @@ dependencies = [
  "embedded-hal 1.0.0",
  "embedded-hal-async",
  "num",
+]
+
+[[package]]
+name = "a121-sys"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3b3fa639196480856e3e9d8889ede7a3b5d728ec61cced764569f09f4a607f25"
+dependencies = [
+ "bindgen",
+ "cc",
 ]
 
 [[package]]

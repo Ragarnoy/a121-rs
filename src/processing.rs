@@ -4,7 +4,7 @@ use metadata::ProcessingMetaData;
 
 use crate::config::RadarConfig;
 use crate::num::AccComplex;
-use crate::rss_bindings::{
+use a121_sys::{
     acc_processing_create, acc_processing_destroy, acc_processing_execute, acc_processing_result_t,
     acc_processing_t,
 };

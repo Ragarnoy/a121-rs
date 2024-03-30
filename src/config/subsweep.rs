@@ -2,7 +2,7 @@ use crate::config::hwaas::Hwaas;
 use crate::config::prf::PulseRepetitionFrequency;
 use crate::config::profile::RadarProfile;
 use crate::config::RadarConfig;
-use crate::rss_bindings::*;
+use a121_sys::*;
 
 /// Subsweep configuration
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

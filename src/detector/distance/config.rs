@@ -10,7 +10,7 @@
 
 use crate::config::profile::RadarProfile;
 use crate::config::profile::RadarProfile::AccProfile5;
-use crate::rss_bindings::*;
+use a121_sys::*;
 use core::ops::RangeInclusive;
 
 /// Type alias for the signal quality
@@ -113,7 +113,7 @@ impl RadarDistanceConfig {
     /// Create a balanced distance detection configuration.
     pub fn balanced() -> Self {
         let mut config = Self::new();
-        config.set_interval(0.2..=3.0);
+        config.set_interval(15.0..=17.0);
         config.set_max_step_length(MaxStepLenght::ProfileBased);
         config.set_max_profile(AccProfile5);
         config.set_reflector_shape(ReflectorShape::Generic);

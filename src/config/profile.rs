@@ -1,4 +1,4 @@
-use crate::rss_bindings::acc_config_profile_t_ACC_CONFIG_PROFILE_1;
+use a121_sys::acc_config_profile_t_ACC_CONFIG_PROFILE_1;
 
 #[derive(Debug, PartialEq, defmt::Format)]
 /// Radar profiles indicating different settings for the sensor's RX and TX paths.

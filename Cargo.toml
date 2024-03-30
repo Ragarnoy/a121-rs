@@ -10,10 +10,10 @@ readme = "README.md"
 license = "MIT"
 edition = "2021"
 version = "0.1.2"
-links = "acconeer_a121"
 rust-version = "1.75"
 
 [dependencies]
+a121-sys = { version = "0.1", features = ["distance"] }
 defmt = "0.3.5"
 defmt-rtt = "0.4.0"
 
