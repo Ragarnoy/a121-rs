@@ -29,8 +29,8 @@ bindgen = "0.69"
 cc = "1.0"
 
 [features]
-distance = []
-presence = []
+distance = ["a121-sys/distance"]
+presence = ["a121-sys/presence"]
 libm = ["dep:libm", "num/libm"]
 nightly-logger = []
 std = []
@@ -44,4 +44,3 @@ debug = 2
 codegen-units = 1
 lto = true
 opt-level = "s"
-
