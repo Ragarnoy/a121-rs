@@ -1,8 +1,8 @@
-use crate::rss_bindings::{
+use crate::sensor::error::SensorError;
+use a121_sys::{
     acc_cal_info_t, acc_cal_result_t, acc_sensor_get_cal_info, acc_sensor_validate_calibration,
     ACC_CAL_RESULT_DATA_SIZE,
 };
-use crate::sensor::error::SensorError;
 
 pub struct CalibrationInfo {
     inner: acc_cal_info_t,

@@ -4,7 +4,7 @@
 [![crates.io](https://img.shields.io/crates/v/a121-rs.svg)](https://crates.io/crates/a121-rs)
 [![crates.io](https://img.shields.io/crates/d/a121-rs.svg)](https://crates.io/crates/a121-rs)
 
-_a121-rs_ is a Rust library providing bindings and a high-level abstraction for interfacing with the Acconeer A121 V-Band radar sensor. Designed for use in embedded systems, it offers asynchronous operation through embedded-hal traits, making it a perfect fit for no_std environments.
+_a121-rs_ is a Rust library providing a high-level abstraction for interfacing with the Acconeer A121 V-Band radar sensor. Designed for use in embedded systems, it offers asynchronous operation through embedded-hal traits, making it a perfect fit for no_std environments.
 
 _a121-rs_ aims to simplify the development process for applications requiring accurate distance measurements and presence detection, leveraging the unique capabilities of the A121 radar sensor.
 

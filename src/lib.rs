@@ -55,7 +55,5 @@ pub mod num;
 pub mod processing;
 /// Main radar module, interfacing with the radar sensor
 pub mod radar;
-/// C Bindings to the Acconeer Radar System Software
-mod rss_bindings;
 /// Sensor module for the radar sensor
 mod sensor;

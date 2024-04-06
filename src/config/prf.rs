@@ -1,4 +1,4 @@
-use crate::rss_bindings::acc_config_prf_t;
+use a121_sys::acc_config_prf_t;
 
 /// Pulse Repetition Frequency (PRF)
 ///

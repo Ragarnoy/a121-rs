@@ -9,12 +9,10 @@ use embedded_hal_async::digital::Wait;
 use crate::config::RadarConfig;
 use crate::hal::AccHalImpl;
 use crate::processing::Processing;
-use crate::rss_bindings::{
-    acc_sensor_connected, acc_sensor_id_t, acc_sensor_t, acc_version_get_hex,
-};
 use crate::sensor::calibration::CalibrationResult;
 use crate::sensor::error::SensorError;
 use crate::sensor::Sensor;
+use a121_sys::{acc_sensor_connected, acc_sensor_id_t, acc_sensor_t, acc_version_get_hex};
 
 pub type TransitionResult<STATEOK, STATERR, SINT, ENABLE, DLY> =
     Result<Radar<STATEOK, SINT, ENABLE, DLY>, TransitionError<STATERR, SINT, ENABLE, DLY>>;

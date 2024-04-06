@@ -1,4 +1,4 @@
-use crate::rss_bindings::{acc_processing_metadata_t, ACC_MAX_NUM_SUBSWEEPS};
+use a121_sys::{acc_processing_metadata_t, ACC_MAX_NUM_SUBSWEEPS};
 
 pub struct ProcessingMetaData {
     inner: acc_processing_metadata_t,

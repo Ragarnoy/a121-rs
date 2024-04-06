@@ -2,7 +2,7 @@ use crate::config::RadarConfig;
 use crate::detector::distance::InnerRadarDistanceDetector;
 use crate::processing::metadata::ProcessingMetaData;
 use crate::processing::ProcessingResult;
-use crate::rss_bindings::{
+use a121_sys::{
     acc_detector_cal_result_dynamic_t, acc_detector_distance_get_sizes,
     acc_detector_distance_result_t, ACC_DETECTOR_CAL_RESULT_DYNAMIC_DATA_SIZE,
     ACC_DETECTOR_DISTANCE_RESULT_MAX_NUM_DISTANCES,

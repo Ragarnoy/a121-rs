@@ -11,7 +11,7 @@ use calibration::CalibrationResult;
 use error::SensorError;
 
 use crate::config::RadarConfig;
-use crate::rss_bindings::*;
+use a121_sys::*;
 
 pub mod calibration;
 pub mod error;
