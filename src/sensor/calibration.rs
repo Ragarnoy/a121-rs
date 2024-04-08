@@ -1,7 +1,6 @@
 use crate::sensor::error::SensorError;
 use a121_sys::{
     acc_cal_info_t, acc_cal_result_t, acc_sensor_get_cal_info, acc_sensor_validate_calibration,
-    ACC_CAL_RESULT_DATA_SIZE,
 };
 
 pub struct CalibrationInfo {
@@ -87,9 +86,7 @@ impl From<CalibrationResult> for CalibrationInfo {
 
 impl Default for CalibrationResult {
     fn default() -> Self {
-        let inner = acc_cal_result_t {
-            data: [0; ACC_CAL_RESULT_DATA_SIZE as usize],
-        };
+        let inner = acc_cal_result_t { data: [0; 48] };
         Self { inner }
     }
 }
