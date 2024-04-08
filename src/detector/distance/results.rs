@@ -4,8 +4,7 @@ use crate::processing::metadata::ProcessingMetaData;
 use crate::processing::ProcessingResult;
 use a121_sys::{
     acc_detector_cal_result_dynamic_t, acc_detector_distance_get_sizes,
-    acc_detector_distance_result_t, ACC_DETECTOR_CAL_RESULT_DYNAMIC_DATA_SIZE,
-    ACC_DETECTOR_DISTANCE_RESULT_MAX_NUM_DISTANCES,
+    acc_detector_distance_result_t, ACC_DETECTOR_DISTANCE_RESULT_MAX_NUM_DISTANCES,
 };
 
 /// Enumerates possible errors that can occur during the processing of radar data.
@@ -128,9 +127,7 @@ pub struct DynamicResult {
 impl Default for DynamicResult {
     fn default() -> Self {
         Self {
-            inner: acc_detector_cal_result_dynamic_t {
-                data: [0; ACC_DETECTOR_CAL_RESULT_DYNAMIC_DATA_SIZE as usize],
-            },
+            inner: acc_detector_cal_result_dynamic_t { data: [0; 2] },
         }
     }
 }
