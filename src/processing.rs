@@ -83,3 +83,19 @@ impl Drop for Processing {
         }
     }
 }
+
+impl From<acc_processing_result_t> for ProcessingResult {
+    fn from(result: acc_processing_result_t) -> Self {
+        let frame = unsafe { AccComplex::from_ptr(result.frame) };
+        Self {
+            inner: result,
+            frame,
+        }
+    }
+}
+
+impl From<ProcessingResult> for acc_processing_result_t {
+    fn from(result: ProcessingResult) -> Self {
+        result.inner
+    }
+}
