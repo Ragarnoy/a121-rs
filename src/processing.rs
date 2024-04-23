@@ -11,6 +11,7 @@ use a121_sys::{
 
 pub mod metadata;
 
+#[derive(Debug, Clone)]
 pub struct ProcessingResult {
     inner: acc_processing_result_t,
     pub frame: AccComplex,
@@ -86,7 +87,7 @@ impl Drop for Processing {
 
 impl From<acc_processing_result_t> for ProcessingResult {
     fn from(result: acc_processing_result_t) -> Self {
-        let frame = unsafe { AccComplex::from_ptr(result.frame) };
+        let frame = AccComplex::from_ptr(result.frame);
         Self {
             inner: result,
             frame,
