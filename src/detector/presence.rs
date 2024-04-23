@@ -28,6 +28,10 @@ impl InnerPresenceDetector {
         }
     }
 
+    pub fn presence_metadata(&self) -> &PresenceMetadata {
+        &self.presence_metadata
+    }
+
     fn inner(&self) -> *const acc_detector_presence_handle {
         self.inner
     }
@@ -80,6 +84,10 @@ where
             inner,
             config,
         }
+    }
+
+    pub fn presence_metadata(&self) -> &PresenceMetadata {
+        self.inner.presence_metadata()
     }
 
     pub async fn prepare_detector(

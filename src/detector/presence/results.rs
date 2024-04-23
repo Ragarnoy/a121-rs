@@ -1,10 +1,8 @@
-use crate::config::prf::PulseRepetitionFrequency;
 use crate::config::profile::RadarProfile;
-use crate::config::RadarConfig;
 use crate::processing::ProcessingResult;
 use a121_sys::{
-    acc_config_profile_t, acc_config_profile_t_ACC_CONFIG_PROFILE_5,
-    acc_detector_presence_metadata_t, acc_detector_presence_result_t,
+    acc_config_profile_t_ACC_CONFIG_PROFILE_5, acc_detector_presence_metadata_t,
+    acc_detector_presence_result_t,
 };
 
 /// Represents the results from a presence detection operation.
@@ -49,6 +47,7 @@ impl PresenceResult<'_> {
     }
 
     pub(super) fn inner(&mut self) -> acc_detector_presence_result_t {
+        let processing_result = self.processing_result.clone();
         acc_detector_presence_result_t {
             presence_detected: self.presence_detected,
             intra_presence_score: self.intra_presence_score,
@@ -59,7 +58,7 @@ impl PresenceResult<'_> {
             depthwise_inter_presence_scores: self.depthwise_inter_presence_scores.as_ptr()
                 as *mut _,
             depthwise_presence_scores_length: self.depthwise_presence_scores_length,
-            processing_result: self.processing_result.into(),
+            processing_result: processing_result.into(),
         }
     }
 }
@@ -105,11 +104,7 @@ impl PresenceMetadata {
     }
 
     pub fn profile(&self) -> RadarProfile {
-        (self.inner.profile as u32).into()
-    }
-
-    pub(super) fn inner(&self) -> &acc_detector_presence_metadata_t {
-        &self.inner
+        self.inner.profile.into()
     }
 
     pub(super) fn mut_ptr(&mut self) -> *mut acc_detector_presence_metadata_t {
