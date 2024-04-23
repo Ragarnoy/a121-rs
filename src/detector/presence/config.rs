@@ -17,6 +17,7 @@ pub type SignalQuality = f32;
 
 /// Configuration for the radar presence detection.
 pub struct PresenceConfig {
+    /// Pointer to the inner presence detector configuration.
     pub inner: *mut acc_detector_presence_config,
 }
 
