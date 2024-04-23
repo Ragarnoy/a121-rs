@@ -6,6 +6,7 @@ extern crate alloc;
 use alloc::vec;
 use core::cell::RefCell;
 
+use a121_rs::detector::distance::config::RadarDistanceConfig;
 use a121_rs::detector::distance::RadarDistanceDetector;
 use a121_rs::radar;
 use a121_rs::radar::Radar;
@@ -77,7 +78,9 @@ async fn main(_spawner: Spawner) {
     let mut calibration = radar.calibrate().await.unwrap();
     info!("Calibration complete.");
     let mut radar = radar.prepare_sensor(&mut calibration).unwrap();
-    let mut distance = RadarDistanceDetector::new(&mut radar);
+    let mut dist_config = RadarDistanceConfig::balanced();
+    dist_config.set_interval(4.0..=5.5);
+    let mut distance = RadarDistanceDetector::with_config(&mut radar, dist_config);
     let mut buffer = vec![0u8; distance.get_distance_buffer_size()];
     let mut static_cal_result = vec![0u8; distance.get_static_result_buffer_size()];
     trace!("Calibrating detector...");
