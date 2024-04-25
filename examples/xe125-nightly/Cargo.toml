@@ -3,6 +3,10 @@ name = "xe125-nightly"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+bench = false
+test = false
+
 [dependencies]
 a121-rs = { path = "../../", features = ["distance", "nightly-logger"] }
 
@@ -39,3 +43,8 @@ debug = 2
 lto = true
 codegen-units = 1
 opt-level = "s"
+
+[[bin]]
+name = "distance"
+bench = false
+test = false

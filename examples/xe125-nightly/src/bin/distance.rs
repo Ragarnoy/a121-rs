@@ -6,48 +6,24 @@ extern crate alloc;
 use alloc::vec;
 use core::cell::RefCell;
 
-use a121_rs::detector::distance::config::RadarDistanceConfig;
-use a121_rs::detector::distance::RadarDistanceDetector;
-use a121_rs::radar;
-use a121_rs::radar::Radar;
 use defmt::{info, trace, warn};
 use embassy_executor::Spawner;
 use embassy_stm32::exti::ExtiInput;
 use embassy_stm32::gpio::{Input, Level, Output, Pull, Speed};
-use embassy_stm32::peripherals::{DMA2_CH2, DMA2_CH3, PB0, SPI1};
-use embassy_stm32::rcc::{
-    ClockSrc, LsConfig, Pll, PllMul, PllPDiv, PllPreDiv, PllQDiv, PllRDiv, PllSource,
-};
-use embassy_stm32::spi::{Config, Spi};
-use embassy_stm32::time::Hertz;
+use embassy_stm32::spi::Spi;
 use embassy_time::{Delay, Instant};
 use embedded_hal_bus::spi::ExclusiveDevice;
+
+use a121_rs::detector::distance::config::RadarDistanceConfig;
+use a121_rs::detector::distance::RadarDistanceDetector;
+use a121_rs::radar;
+use a121_rs::radar::Radar;
 use radar::rss_version;
-use talc::{ClaimOnOom, Span, Talc, Talck};
-use tinyrlibc as _;
-use {defmt_rtt as _, panic_probe as _};
-
-use crate::adapter::SpiAdapter;
-
-mod adapter;
-
-static mut ARENA: [u8; 16000] = [0u8; 16000];
-
-#[global_allocator]
-static ALLOCATOR: Talck<spin::Mutex<()>, ClaimOnOom> = Talc::new(unsafe {
-    // if we're in a hosted environment, the Rust runtime may allocate before
-    // main() is called, so we need to initialize the arena automatically
-    ClaimOnOom::new(Span::from_const_array(core::ptr::addr_of!(ARENA)))
-})
-.lock();
-
-type SpiDeviceMutex =
-    ExclusiveDevice<Spi<'static, SPI1, DMA2_CH3, DMA2_CH2>, Output<'static, PB0>, Delay>;
-static mut SPI_DEVICE: Option<RefCell<SpiAdapter<SpiDeviceMutex>>> = None;
+use xe125_nightly::adapter::SpiAdapter;
+use xe125_nightly::*;
 
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
-    info!("Starting...");
     let p = embassy_stm32::init(xm125_clock_config());
 
     let enable = Output::new(p.PB12, Level::Low, Speed::VeryHigh); // ENABLE on PB12
@@ -66,7 +42,6 @@ async fn main(_spawner: Spawner) {
         xm125_spi_config(),
     );
     let exclusive_device = ExclusiveDevice::new(spi, cs_pin, Delay);
-    info!("SPI initialized.");
 
     unsafe { SPI_DEVICE = Some(RefCell::new(SpiAdapter::new(exclusive_device))) };
     let spi_mut_ref = unsafe { SPI_DEVICE.as_mut().unwrap() };
@@ -78,6 +53,7 @@ async fn main(_spawner: Spawner) {
     let mut calibration = radar.calibrate().await.unwrap();
     info!("Calibration complete.");
     let mut radar = radar.prepare_sensor(&mut calibration).unwrap();
+
     let mut dist_config = RadarDistanceConfig::balanced();
     dist_config.set_interval(4.0..=5.5);
     let mut distance = RadarDistanceDetector::with_config(&mut radar, dist_config);
@@ -135,36 +111,4 @@ async fn main(_spawner: Spawner) {
             last_print = Instant::now();
         }
     }
-}
-
-fn xm125_spi_config() -> Config {
-    let mut spi_config = Config::default();
-    spi_config.frequency = Hertz(1_000_000);
-    spi_config
-}
-
-fn xm125_clock_config() -> embassy_stm32::Config {
-    let mut config = embassy_stm32::Config::default();
-    config.rcc.hsi = true;
-    config.rcc.hse = None;
-    config.rcc.msi = None;
-    config.rcc.mux = ClockSrc::PLL1_R;
-    config.rcc.pll = Some(Pll {
-        source: PllSource::HSI,
-        prediv: PllPreDiv::DIV1,
-        mul: PllMul::MUL10,
-        divp: Some(PllPDiv::DIV7),
-        divq: Some(PllQDiv::DIV2),
-        divr: Some(PllRDiv::DIV2),
-    });
-    config.rcc.pllsai1 = Some(Pll {
-        source: PllSource::HSI,
-        prediv: PllPreDiv::DIV1,
-        mul: PllMul::MUL8,
-        divp: Some(PllPDiv::DIV7),
-        divq: Some(PllQDiv::DIV2),
-        divr: Some(PllRDiv::DIV2),
-    });
-    config.rcc.ls = LsConfig::default_lsi();
-    config
 }
