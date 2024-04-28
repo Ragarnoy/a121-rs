@@ -6,7 +6,7 @@ extern crate alloc;
 use alloc::vec;
 use core::cell::RefCell;
 
-use defmt::{info, trace, warn};
+use defmt::{debug, info, trace, warn};
 use embassy_executor::Spawner;
 use embassy_stm32::exti::ExtiInput;
 use embassy_stm32::gpio::{Input, Level, Output, Pull, Speed};
@@ -46,7 +46,7 @@ async fn main(_spawner: Spawner) {
     unsafe { SPI_DEVICE = Some(RefCell::new(SpiAdapter::new(exclusive_device))) };
     let spi_mut_ref = unsafe { SPI_DEVICE.as_mut().unwrap() };
 
-    info!("RSS Version: {}", rss_version());
+    debug!("RSS Version: {}", rss_version());
 
     let mut radar = Radar::new(1, spi_mut_ref.get_mut(), interrupt, enable, Delay).await;
     info!("Radar enabled.");
