@@ -4,9 +4,20 @@ use a121_sys::{
     acc_int16_complex_t, acc_processing_meter_to_points, acc_processing_points_to_meter,
 };
 
+#[derive(Debug, Clone)]
+pub struct AccComplex {
+    inner: acc_int16_complex_t,
+}
+
 impl AccComplex {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn from_ptr(ptr: *const acc_int16_complex_t) -> Self {
+        Self {
+            inner: unsafe { *ptr },
+        }
     }
 
     /// Returns a mutable pointer to the inner `acc_int16_complex_t` struct.
@@ -19,10 +30,6 @@ impl AccComplex {
     pub fn ptr(&self) -> *const acc_int16_complex_t {
         &self.inner
     }
-}
-
-pub struct AccComplex {
-    inner: acc_int16_complex_t,
 }
 
 impl Default for AccComplex {
