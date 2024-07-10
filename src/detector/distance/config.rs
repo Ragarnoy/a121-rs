@@ -125,11 +125,6 @@ impl RadarDistanceConfig {
         config
     }
 
-    /// Sets the sensor ID to be used for detection.
-    pub fn sensor_set(&mut self, sensor_id: u32) {
-        unsafe { acc_detector_distance_config_sensor_set(self.inner, sensor_id) }
-    }
-
     /// Configures the measurement interval in meters.
     pub fn set_interval(&mut self, range: RangeInclusive<f32>) {
         self.set_start_interval(*range.start());
