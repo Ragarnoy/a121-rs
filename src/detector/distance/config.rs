@@ -8,10 +8,12 @@
 
 #![warn(missing_docs)]
 
+use core::ops::RangeInclusive;
+
+use a121_sys::*;
+
 use crate::config::profile::RadarProfile;
 use crate::config::profile::RadarProfile::AccProfile5;
-use a121_sys::*;
-use core::ops::RangeInclusive;
 
 /// Type alias for the signal quality
 pub type SignalQuality = f32;
@@ -123,11 +125,6 @@ impl RadarDistanceConfig {
         config.set_signal_quality(15.0);
         config.set_close_range_leakage_cancelation(false);
         config
-    }
-
-    /// Sets the sensor ID to be used for detection.
-    pub fn sensor_set(&mut self, sensor_id: u32) {
-        unsafe { acc_detector_distance_config_sensor_set(self.inner, sensor_id) }
     }
 
     /// Configures the measurement interval in meters.
