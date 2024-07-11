@@ -26,11 +26,7 @@ _a121-rs_ comes with a host of features designed to make working with the A121 s
 
 The following dependencies are required to use _a121-rs_:
 - Acconeer A121 Static Library (and detector libraries for distance and presence detection if the feature is enabled)
-- 'arm-none-eabi-gcc' to build the C wrapper for the stm32 examples
-```bash
-# Ubuntu
-sudo apt-get install gcc-arm-none-eabi
-```
+- 'arm-none-eabi-gcc (GNU Arm Embedded Toolchain 9-2020-q2-update) 9.3.1 20200408' to build the C wrapper for the stm32 examples
 - esp toolschains to build the esp examples, install via espup (https://github.com/esp-rs/espup) 
 
 ## Supported Targets
