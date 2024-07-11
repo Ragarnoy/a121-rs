@@ -25,6 +25,7 @@ pub struct CalibrationResult {
     inner: acc_cal_result_t,
 }
 
+#[cfg(feature = "defmt")]
 impl defmt::Format for CalibrationResult {
     fn format(&self, f: defmt::Formatter) {
         defmt::write!(f, "{:?}", self.inner.data)

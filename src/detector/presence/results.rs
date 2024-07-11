@@ -79,7 +79,8 @@ impl Default for PresenceResult<'_> {
 }
 
 /// Enumerates possible errors that can occur during the processing of radar data for presence detection.
-#[derive(Debug, Copy, Clone, defmt::Format)]
+#[derive(Debug, Copy, Clone)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum ProcessDataError {
     CalibrationNeeded,
     ProcessingFailed,

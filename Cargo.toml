@@ -14,8 +14,7 @@ rust-version = "1.75"
 
 [dependencies]
 a121-sys = { version = "0.2", features = ["distance", "presence"] }
-defmt = "0.3.5"
-defmt-rtt = "0.4.0"
+defmt = { version = "0.3", optional = true }
 
 embedded-hal = "1.0.0"
 embedded-hal-async = "1.0.0"
@@ -32,8 +31,9 @@ cc = "1.0"
 distance = ["a121-sys/distance"]
 presence = ["a121-sys/presence"]
 libm = ["dep:libm", "num/libm"]
-nightly-logger = []
+nightly-logger = ["defmt"]
 std = []
+defmt = ["dep:defmt"]
 
 [profile.dev]
 lto = true

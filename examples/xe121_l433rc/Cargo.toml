@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-a121-rs = { path = "../../../a121-rs", features = ["distance"] }
+a121-rs = { path = "../../../a121-rs", features = ["distance", "defmt"] }
 
 panic-probe = { version = "0.3", features = ["print-defmt"] }
 

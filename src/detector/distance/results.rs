@@ -8,7 +8,8 @@ use a121_sys::{
 };
 
 /// Enumerates possible errors that can occur during the processing of radar data.
-#[derive(Debug, Copy, Clone, defmt::Format)]
+#[derive(Debug, Copy, Clone)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum ProcessDataError {
     CalibrationNeeded,
     ProcessingFailed,
@@ -16,7 +17,8 @@ pub enum ProcessDataError {
 }
 
 /// Represents a single detected distance and its strength.
-#[derive(Debug, Default, Copy, Clone, defmt::Format)]
+#[derive(Debug, Default, Copy, Clone)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Distance {
     pub distance: f32,
     pub strength: f32,
@@ -136,7 +138,8 @@ impl Default for DynamicResult {
 ///
 /// This struct holds information about the required buffer sizes for distance detection
 /// operations, including the static part of the detector calibration result.
-#[derive(Debug, defmt::Format)]
+#[derive(Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub(super) struct DistanceSizes {
     pub buffer_size: usize,
     pub detector_cal_result_static_size: usize,

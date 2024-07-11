@@ -10,7 +10,6 @@ dependencies = [
  "bindgen",
  "cc",
  "defmt",
- "defmt-rtt",
  "embassy-sync",
  "embedded-hal 1.0.0",
  "embedded-hal-async",
