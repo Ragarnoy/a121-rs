@@ -1,7 +1,8 @@
 use core::fmt::{Debug, Display, Formatter};
 use core::marker::PhantomData;
-use embedded_hal::digital::OutputPin;
 
+use a121_sys::{acc_sensor_connected, acc_sensor_id_t, acc_sensor_t, acc_version_get_hex};
+use embedded_hal::digital::OutputPin;
 use embedded_hal::spi::{ErrorKind as SpiErrorKind, SpiDevice};
 use embedded_hal_async::delay::DelayNs;
 use embedded_hal_async::digital::Wait;
@@ -12,7 +13,6 @@ use crate::processing::Processing;
 use crate::sensor::calibration::CalibrationResult;
 use crate::sensor::error::SensorError;
 use crate::sensor::Sensor;
-use a121_sys::{acc_sensor_connected, acc_sensor_id_t, acc_sensor_t, acc_version_get_hex};
 
 pub type TransitionResult<STATEOK, STATERR, SINT, ENABLE, DLY> =
     Result<Radar<STATEOK, SINT, ENABLE, DLY>, TransitionError<STATERR, SINT, ENABLE, DLY>>;
@@ -259,6 +259,7 @@ where
         self.sensor.calibrate(&mut self.interrupt, &mut buf).await
     }
 
+    /// Turns the radar sensor off then on again.
     pub async fn reset_sensor(&mut self) {
         self.sensor.reset_sensor().await;
     }

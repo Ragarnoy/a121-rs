@@ -10,15 +10,16 @@ readme = "README.md"
 license = "MIT"
 edition = "2021"
 version = "0.1.2"
-rust-version = "1.75"
+rust-version = "1.77"
 
 [dependencies]
-a121-sys = { version = "0.2", features = ["distance", "presence"] }
+a121-sys = { version = "0.4", features = ["distance", "presence"] }
+
 defmt = { version = "0.3", optional = true }
 
 embedded-hal = "1.0.0"
 embedded-hal-async = "1.0.0"
-embassy-sync = { version = "0.5.0", features = [ "defmt" ] }
+embassy-sync = { version = "0.6.0", features = [ "defmt" ] }
 
 num = { version = "0.4", default-features = false }
 libm = { version = "0.2.8", default-features = false, optional = true }
