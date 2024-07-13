@@ -1,6 +1,7 @@
 use a121_sys::acc_config_profile_t_ACC_CONFIG_PROFILE_1;
 
-#[derive(Debug, PartialEq, defmt::Format)]
+#[derive(Debug, PartialEq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 /// Radar profiles indicating different settings for the sensor's RX and TX paths.
 pub enum RadarProfile {
     /// Profile 1

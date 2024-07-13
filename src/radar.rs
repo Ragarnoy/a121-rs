@@ -86,6 +86,7 @@ pub struct RssVersion {
     version: u32,
 }
 
+#[cfg(feature = "defmt")]
 impl defmt::Format for RssVersion {
     fn format(&self, f: defmt::Formatter) {
         defmt::write!(f, "{}.{}.{}", self.major(), self.minor(), self.patch())

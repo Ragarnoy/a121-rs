@@ -1,7 +1,6 @@
 #![warn(missing_docs)]
 
 use core::num::NonZeroU8;
-use defmt::trace;
 
 use num::Zero;
 
@@ -81,9 +80,11 @@ impl Drop for RadarConfig {
 impl RadarConfig {
     /// Creates a new radar configuration instance with a specified ID.
     pub fn new() -> Self {
-        trace!("Creating radar configuration");
+        #[cfg(feature = "defmt")]
+        defmt::trace!("Creating radar configuration");
         let inner = unsafe { acc_config_create() };
-        trace!("Radar configuration created");
+        #[cfg(feature = "defmt")]
+        defmt::trace!("Radar configuration created");
         Self {
             inner,
             num_subsweep: None,

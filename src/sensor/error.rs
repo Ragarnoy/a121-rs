@@ -1,4 +1,5 @@
-#[derive(Debug, Copy, Clone, defmt::Format)]
+#[derive(Debug, Copy, Clone)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum SensorError {
     CalibrationFailed,
     PrepareFailed,

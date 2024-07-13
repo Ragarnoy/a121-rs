@@ -79,7 +79,8 @@ impl Default for PresenceResult<'_> {
 }
 
 /// Enumerates possible errors that can occur during the processing of radar data for presence detection.
-#[derive(Debug, Copy, Clone, defmt::Format)]
+#[derive(Debug, Copy, Clone)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum ProcessDataError {
     CalibrationNeeded,
     ProcessingFailed,
@@ -117,6 +118,7 @@ impl Default for PresenceMetadata {
         Self {
             inner: acc_detector_presence_metadata_t {
                 start_m: 0.0,
+                end_m: 6.0,
                 step_length_m: 0.0,
                 num_points: 0,
                 profile: acc_config_profile_t_ACC_CONFIG_PROFILE_5,

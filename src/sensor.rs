@@ -1,7 +1,6 @@
 use core::ffi::c_void;
 
 use core::ops::{Deref, DerefMut};
-use defmt::trace;
 use embedded_hal::digital::OutputPin;
 use embedded_hal_async::delay::DelayNs;
 
@@ -79,7 +78,8 @@ where
     /// # Returns
     /// `Some(Sensor)` if the sensor instance was successfully created, `None` otherwise.
     pub fn new(sensor_id: u32, enable_pin: ENABLE, delay: DLY) -> Option<Self> {
-        trace!("Creating sensor {}", sensor_id);
+        #[cfg(feature = "defmt")]
+        defmt::trace!("Creating sensor {}", sensor_id);
         let inner = InnerSensor::new(sensor_id)?;
         Some(Self {
             inner,
@@ -196,7 +196,8 @@ where
             );
         }
         if ret {
-            trace!("Sensor prepared");
+            #[cfg(feature = "defmt")]
+            defmt::trace!("Sensor prepared");
             Ok(())
         } else {
             Err(SensorError::PrepareFailed)

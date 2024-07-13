@@ -1,6 +1,8 @@
 use core::cell::RefCell;
-use core::ffi::{c_char, c_void, CStr};
-use defmt::trace;
+use core::ffi::{c_char, c_void};
+
+#[cfg(feature = "defmt")]
+use core::ffi::CStr;
 
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::blocking_mutex::Mutex;
@@ -75,15 +77,18 @@ impl AccHalImpl {
     #[allow(dead_code)]
     extern "C" fn transfer16_function(
         _sensor_id: acc_sensor_id_t,
-        buffer: *mut u16,
-        buffer_length: usize,
+        _buffer: *mut u16,
+        _buffer_length: usize,
     ) {
-        let tmp_buf = unsafe { core::slice::from_raw_parts_mut(buffer, buffer_length) };
-        trace!(
-            "Transfer16 function called: buffer={:#X} (size:{})",
-            tmp_buf,
-            buffer_length
-        );
+        #[cfg(feature = "defmt")]
+        {
+            let tmp_buf = unsafe { core::slice::from_raw_parts_mut(_buffer, _buffer_length) };
+            defmt::trace!(
+                "Transfer16 function called: buffer={:#X} (size:{})",
+                tmp_buf,
+                _buffer_length
+            );
+        }
         // Borrow a mutable reference to the SpiBus
         SPI_INSTANCE.lock(|cell| unsafe {
             let mut binding = cell.borrow_mut();
@@ -118,7 +123,8 @@ impl AccHalImpl {
     /// Panics if the HAL registration fails.
     #[inline(always)]
     pub fn register(&self) {
-        trace!("Registering HAL");
+        #[cfg(feature = "defmt")]
+        defmt::trace!("Registering HAL");
         let result = unsafe { acc_rss_hal_register(&self.inner) };
         assert!(result, "Failed to register HAL");
     }
@@ -157,6 +163,7 @@ unsafe extern "C" fn logger(
     let module = unsafe { CStr::from_ptr(module) };
     let format = unsafe { CStr::from_ptr(format) };
     let message = format.to_str().unwrap_or("");
+
     match level {
         0 => defmt::error!("{}: {}", module.to_str().unwrap_or(""), message),
         1 => defmt::warn!("{}: {}", module.to_str().unwrap_or(""), message),
@@ -172,16 +179,18 @@ unsafe extern "C" fn logger(
 /// # Safety
 /// This function is unsafe because it takes a raw pointer.
 #[no_mangle]
-pub unsafe extern "C" fn rust_log(level: u32, message: *const c_char) {
-    let c_str = unsafe { CStr::from_ptr(message) };
-    let str_slice = c_str.to_str().unwrap_or("");
-
-    match level {
-        0 => defmt::error!("{}", str_slice),
-        1 => defmt::warn!("{}", str_slice),
-        2 => defmt::info!("{}", str_slice),
-        3 => defmt::debug!("{}", str_slice),
-        4 => defmt::trace!("{}", str_slice),
-        _ => defmt::error!("Unknown log level: {}", level),
+pub unsafe extern "C" fn rust_log(_level: u32, _message: *const c_char) {
+    #[cfg(feature = "defmt")]
+    {
+        let c_str = unsafe { CStr::from_ptr(_message) };
+        let str_slice = c_str.to_str().unwrap_or("");
+        match _level {
+            0 => defmt::error!("{}", str_slice),
+            1 => defmt::warn!("{}", str_slice),
+            2 => defmt::info!("{}", str_slice),
+            3 => defmt::debug!("{}", str_slice),
+            4 => defmt::trace!("{}", str_slice),
+            _ => defmt::error!("Unknown log level: {}", _level),
+        }
     }
 }

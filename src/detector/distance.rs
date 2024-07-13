@@ -8,7 +8,6 @@ use crate::sensor::calibration::CalibrationResult;
 use crate::sensor::error::SensorError;
 use a121_sys::*;
 use core::ffi::c_void;
-use defmt::trace;
 use embedded_hal::digital::OutputPin;
 use embedded_hal_async::delay::DelayNs;
 use embedded_hal_async::digital::Wait;
@@ -64,7 +63,8 @@ where
     pub fn new(radar: &'radar mut Radar<Ready, SINT, ENABLE, DLY>) -> Self {
         let config = RadarDistanceConfig::default();
         let inner = InnerRadarDistanceDetector::new(&config);
-        trace!("{:?}", DistanceSizes::new(&inner));
+        #[cfg(feature = "defmt")]
+        defmt::trace!("{:?}", DistanceSizes::new(&inner));
         Self {
             radar,
             inner,
@@ -78,7 +78,8 @@ where
         config: RadarDistanceConfig,
     ) -> Self {
         let inner = InnerRadarDistanceDetector::new(&config);
-        trace!("{:?}", DistanceSizes::new(&inner));
+        #[cfg(feature = "defmt")]
+        defmt::trace!("{:?}", DistanceSizes::new(&inner));
         Self {
             radar,
             inner,
