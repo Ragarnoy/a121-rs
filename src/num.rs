@@ -14,9 +14,14 @@ impl AccComplex {
         Self::default()
     }
 
-    pub fn from_ptr(ptr: *const acc_int16_complex_t) -> Self {
+    /// Creates a new `AccComplex` instance from a raw pointer.
+    ///
+    /// # Safety
+    /// This function is unsafe because it dereferences a raw pointer.
+    /// The caller must ensure that the pointer is valid and points to a properly initialized `acc_int16_complex_t` struct.
+    pub unsafe fn from_ptr(ptr: *const acc_int16_complex_t) -> Self {
         Self {
-            inner: unsafe { *ptr },
+            inner: *ptr,
         }
     }
 
