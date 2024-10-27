@@ -43,7 +43,11 @@ async fn main(_spawner: Spawner) {
     );
     let exclusive_device = ExclusiveDevice::new(spi, cs_pin, Delay);
 
-    unsafe { SPI_DEVICE = Some(RefCell::new(SpiAdapter::new(exclusive_device))) };
+    unsafe {
+        SPI_DEVICE = Some(RefCell::new(SpiAdapter::new(
+            exclusive_device.expect("SPI device init failed!"),
+        )))
+    };
     let spi_mut_ref = unsafe { SPI_DEVICE.as_mut().unwrap() };
 
     debug!("RSS Version: {}", rss_version());
