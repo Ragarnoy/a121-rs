@@ -24,9 +24,12 @@ impl ProcessingMetaData {
         Self::default()
     }
 
-    /// Get a mutable reference to the metadata
+    /// Gets a mutable pointer to the underlying metadata structure.
+    ///
     /// # Safety
-    /// This function is unsafe because it returns a mutable reference to the metadata, which is a raw pointer
+    /// - The caller must ensure the pointer is only used while ProcessingMetaData exists
+    /// - The pointer must only be used for passing to Acconeer API functions
+    /// - No other references to the data can exist while the pointer is in use
     pub unsafe fn mut_ptr(&mut self) -> *mut acc_processing_metadata_t {
         &mut self.inner
     }

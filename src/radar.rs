@@ -211,6 +211,25 @@ where
     ENABLE: OutputPin,
     DLY: DelayNs,
 {
+    /// Starts a radar measurement with a previously prepared configuration.
+    ///
+    /// This function initiates a radar measurement based on a configuration that must have been
+    /// set up and prepared in advance. Ensure the sensor is powered on and calibration and
+    /// preparation steps have been completed before calling this function.
+    ///
+    /// # Preconditions
+    ///
+    /// - The sensor must be powered on.
+    /// - `calibrate` must have been successfully called.
+    /// - `prepare` must have been successfully called.
+    ///
+    /// # Arguments
+    ///
+    /// * `sensor` - The sensor instance to use for measurement.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if the measurement was successfully started, `Err(SensorError)` otherwise.
     pub async fn measure<'a>(&mut self, data: &mut [u8]) -> Result<(), SensorError> {
         if (self.sensor.measure(&mut self.interrupt).await).is_ok() {
             if self.sensor.read(data).is_ok() {
@@ -284,10 +303,15 @@ where
         self.sensor.check_status();
     }
 
-    /// Get a mutable reference to the sensor
+    /// Gets a mutable pointer to the underlying sensor.
+    ///
     /// # Safety
-    /// This function is unsafe because it returns a mutable reference to the sensor, which is a raw pointer
+    /// - The returned pointer is only valid while the Radar instance exists
+    /// - The pointer must not be used after the sensor is disabled or reset
+    /// - Only one mutable reference can exist at a time
+    /// - The caller must not violate the state transition requirements
     pub unsafe fn inner_sensor(&self) -> *mut acc_sensor_t {
+        debug_assert!(!self.sensor.inner().is_null(), "Sensor pointer is null");
         self.sensor.inner()
     }
 }

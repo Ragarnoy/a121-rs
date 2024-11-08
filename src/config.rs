@@ -73,6 +73,7 @@ impl Default for RadarConfig {
 impl Drop for RadarConfig {
     /// Destroys the radar configuration instance, freeing any allocated resources.
     fn drop(&mut self) {
+        debug_assert!(!self.inner.is_null(), "Radar configuration is null");
         unsafe { acc_config_destroy(self.inner) };
     }
 }
@@ -95,6 +96,7 @@ impl RadarConfig {
     /// # Safety
     /// This function is unsafe because it returns a raw pointer.
     pub unsafe fn mut_ptr(&mut self) -> *mut acc_config_t {
+        debug_assert!(!self.inner.is_null(), "Radar configuration is null");
         self.inner
     }
 

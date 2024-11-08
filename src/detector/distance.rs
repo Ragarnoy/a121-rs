@@ -35,6 +35,7 @@ impl InnerRadarDistanceDetector {
 
 impl Drop for InnerRadarDistanceDetector {
     fn drop(&mut self) {
+        debug_assert!(!self.inner.is_null(), "Inner detector handle is null");
         unsafe { acc_detector_distance_destroy(self.inner) }
     }
 }

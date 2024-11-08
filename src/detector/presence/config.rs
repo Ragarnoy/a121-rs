@@ -23,6 +23,10 @@ pub struct PresenceConfig {
 
 impl Drop for PresenceConfig {
     fn drop(&mut self) {
+        debug_assert!(
+            !self.inner.is_null(),
+            "Presence detector configuration is null"
+        );
         unsafe { acc_detector_presence_config_destroy(self.inner) }
     }
 }

@@ -15,23 +15,35 @@ use a121_sys::*;
 pub mod calibration;
 pub mod error;
 
-struct InnerSensor {
+/// Safety-critical wrapper around raw sensor pointer
+pub struct InnerSensor {
+    /// Raw pointer to acc_sensor_t. Must never be null once initialized.
+    /// Managed exclusively by this type to maintain memory safety.
     inner: *mut acc_sensor_t,
 }
 
 impl InnerSensor {
+    /// Creates a new sensor instance from a sensor ID.
+    ///
+    /// # Safety
+    /// - The returned pointer must be valid and non-null
+    /// - The sensor must be powered on before calling this function
+    /// - The sensor must not be used in another sensor instance without a power/reset cycle
     pub fn new(sensor_id: u32) -> Option<Self> {
         let sensor_ptr = unsafe { acc_sensor_create(sensor_id as acc_sensor_id_t) };
+
+        // Runtime safety check for null pointer
         if sensor_ptr.is_null() {
-            None
-        } else {
-            Some(Self { inner: sensor_ptr })
+            return None;
         }
+
+        Some(Self { inner: sensor_ptr })
     }
 }
 
 impl Drop for InnerSensor {
     fn drop(&mut self) {
+        debug_assert!(!self.inner.is_null(), "Sensor pointer is null in drop");
         unsafe {
             acc_sensor_destroy(self.inner);
         }
@@ -41,12 +53,22 @@ impl Drop for InnerSensor {
 impl Deref for InnerSensor {
     type Target = acc_sensor_t;
 
+    /// # Safety
+    /// Dereference is safe because:
+    /// - inner is guaranteed non-null by constructor
+    /// - exclusive access is maintained by Rust ownership rules
+    /// - pointer remains valid until drop
     fn deref(&self) -> &Self::Target {
         unsafe { &*self.inner }
     }
 }
 
 impl DerefMut for InnerSensor {
+    /// # Safety
+    /// Dereference is safe because:
+    /// - inner is guaranteed non-null by constructor
+    /// - exclusive access is maintained by Rust ownership rules
+    /// - pointer remains valid until drop
     fn deref_mut(&mut self) -> &mut Self::Target {
         unsafe { &mut *self.inner }
     }
@@ -246,37 +268,6 @@ where
         }
     }
 
-    /// Starts a radar measurement with a previously prepared configuration.
-    ///
-    /// This function initiates a radar measurement based on a configuration that must have been
-    /// set up and prepared in advance. Ensure the sensor is powered on and calibration and
-    /// preparation steps have been completed before calling this function.
-    ///
-    /// # Preconditions
-    ///
-    /// - The sensor must be powered on.
-    /// - `calibrate` must have been successfully called.
-    /// - `prepare` must have been successfully called.
-    ///
-    /// # Arguments
-    ///
-    /// * `sensor` - The sensor instance to use for measurement.
-    ///
-    /// # Returns
-    ///
-    /// `Ok(())` if the measurement was successfully started, `Err(SensorError)` otherwise.
-    ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// # use embedded_hal_async::digital::Wait;
-    /// use rad_hard_sys::sensor::*;
-    /// use rad_hard_sys::sensor::error::SensorError;
-    ///  async fn foo<SINT: Wait>(sensor: &mut Sensor<Ready, SINT>) -> Result<(), SensorError> {
-    /// sensor.measure().await?;
-    /// # Ok(())
-    /// # }
-    /// ```
     pub async fn measure<SINT: Wait>(&mut self, mut interrupt: SINT) -> Result<(), SensorError> {
         // Implementation to start the radar measurement
         let success = unsafe { acc_sensor_measure(self.inner.deref_mut()) };
@@ -307,20 +298,6 @@ where
     ///
     /// # Returns
     /// `Ok(())` if data was successfully read into the buffer, `Err(SensorError)` otherwise.
-    ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// # use embedded_hal_async::digital::Wait;
-    /// use rad_hard_sys::sensor::*;
-    /// use rad_hard_sys::sensor::data::RadarData;
-    /// use rad_hard_sys::sensor::error::SensorError;
-    ///  async fn foo<SINT: Wait>(sensor: &mut Sensor<Ready, SINT>) -> Result<(), SensorError> {
-    /// let mut data_buffer = RadarData::default();
-    /// sensor.read(&mut data_buffer)?;
-    /// # Ok(())
-    /// # }
-    /// ```
     pub fn read(&self, buffer: &mut [u8]) -> Result<(), SensorError> {
         // Implementation to read the radar data
         let success = unsafe {
@@ -337,7 +314,19 @@ where
         }
     }
 
+    /// Returns a mutable pointer to the underlying sensor.
+    ///
+    /// # Safety
+    /// This function is unsafe because:
+    /// - The caller must ensure the sensor has been properly initialized
+    /// - The pointer remains valid only for the lifetime of this Sensor instance
+    /// - The caller must not use this pointer after the Sensor is dropped
+    /// - Multiple mutable references to the same sensor must not be created
     pub unsafe fn inner(&self) -> *mut acc_sensor_t {
+        debug_assert!(
+            !self.inner.inner.is_null(),
+            "Sensor has not been initialized"
+        );
         self.inner.inner
     }
 }

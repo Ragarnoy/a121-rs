@@ -14,18 +14,23 @@ impl AccComplex {
         Self::default()
     }
 
-    /// Creates a new `AccComplex` instance from a raw pointer.
+    /// Creates a new AccComplex from a raw pointer.
     ///
     /// # Safety
-    /// This function is unsafe because it dereferences a raw pointer.
-    /// The caller must ensure that the pointer is valid and points to a properly initialized `acc_int16_complex_t` struct.
+    /// - ptr must be a valid pointer to an initialized acc_int16_complex_t
+    /// - The pointed-to data must be valid for the lifetime of the returned AccComplex
+    /// - The pointer must be properly aligned
     pub unsafe fn from_ptr(ptr: *const acc_int16_complex_t) -> Self {
+        debug_assert!(!ptr.is_null(), "Pointer is null");
         Self { inner: *ptr }
     }
 
-    /// Returns a mutable pointer to the inner `acc_int16_complex_t` struct.
+    /// Returns a mutable pointer to the inner complex number data.
+    ///
     /// # Safety
-    /// This function is unsafe because it returns a raw pointer.
+    /// - The pointer is only valid for the lifetime of this AccComplex instance
+    /// - The caller must ensure no other references to the inner data exist
+    /// - The data must not be modified in a way that violates AccComplex invariants
     pub unsafe fn mut_ptr(&mut self) -> *mut acc_int16_complex_t {
         &mut self.inner
     }
