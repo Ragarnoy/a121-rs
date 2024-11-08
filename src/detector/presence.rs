@@ -43,6 +43,7 @@ impl InnerPresenceDetector {
 
 impl Drop for InnerPresenceDetector {
     fn drop(&mut self) {
+        debug_assert!(!self.inner.is_null(), "Detector handle is null");
         unsafe { acc_detector_presence_destroy(self.inner) }
     }
 }

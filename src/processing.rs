@@ -79,6 +79,7 @@ impl Processing {
 
 impl Drop for Processing {
     fn drop(&mut self) {
+        debug_assert!(!self.inner.is_null(), "Processing is null");
         unsafe {
             acc_processing_destroy(self.inner);
         }

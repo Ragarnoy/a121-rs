@@ -94,6 +94,7 @@ pub struct RadarDistanceConfig {
 
 impl Drop for RadarDistanceConfig {
     fn drop(&mut self) {
+        debug_assert!(self.inner.is_null(), "Dropping a non-null pointer");
         unsafe { acc_detector_distance_config_destroy(self.inner) }
     }
 }
