@@ -1,5 +1,5 @@
-use core::fmt::{Debug, Display, Formatter};
-use core::marker::PhantomData;
+use core::fmt::{Debug, Display};
+use state_shift::{impl_state, type_state};
 
 use a121_sys::{acc_sensor_connected, acc_sensor_id_t, acc_sensor_t, acc_version_get_hex};
 use embedded_hal::digital::OutputPin;
@@ -14,59 +14,13 @@ use crate::sensor::calibration::CalibrationResult;
 use crate::sensor::error::SensorError;
 use crate::sensor::Sensor;
 
-pub type TransitionResult<STATEOK, STATERR, SINT, ENABLE, DLY> =
-    Result<Radar<STATEOK, SINT, ENABLE, DLY>, TransitionError<STATERR, SINT, ENABLE, DLY>>;
-
-pub struct Enabled;
-pub struct Ready;
-pub struct Hibernating;
-
-pub trait RadarState {}
-
-impl RadarState for Enabled {}
-impl RadarState for Ready {}
-impl RadarState for Hibernating {}
-
-/// Error type for transitioning between radar states
-pub struct TransitionError<STATE, SINT, ENABLE, DLY>
+#[type_state(
+    states = (Enabled, Ready, Hibernating),
+    slots = (Enabled)
+)]
+pub struct Radar<SINT, ENABLE, DLY>
 where
     SINT: Wait,
-    STATE: RadarState,
-    ENABLE: OutputPin,
-    DLY: DelayNs,
-{
-    pub radar: Radar<STATE, SINT, ENABLE, DLY>,
-    error: SensorError,
-}
-
-impl<STATE, SINT, ENABLE, DLY> Debug for TransitionError<STATE, SINT, ENABLE, DLY>
-where
-    SINT: Wait,
-    STATE: RadarState,
-    ENABLE: OutputPin,
-    DLY: DelayNs,
-{
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        write!(f, "TransitionError: {:?}", self.error)
-    }
-}
-
-impl<STATE, SINT, ENABLE, DLY> From<TransitionError<STATE, SINT, ENABLE, DLY>> for SensorError
-where
-    SINT: Wait,
-    STATE: RadarState,
-    ENABLE: OutputPin,
-    DLY: DelayNs,
-{
-    fn from(e: TransitionError<STATE, SINT, ENABLE, DLY>) -> Self {
-        e.error
-    }
-}
-
-pub struct Radar<STATE, SINT, ENABLE, DLY>
-where
-    SINT: Wait,
-    STATE: RadarState,
     ENABLE: OutputPin,
     DLY: DelayNs,
 {
@@ -76,7 +30,6 @@ where
     pub processing: Processing,
     pub(crate) interrupt: SINT,
     _hal: AccHalImpl,
-    _state: PhantomData<STATE>,
 }
 
 /// Radar Sensor Software Version
@@ -117,19 +70,21 @@ impl RssVersion {
     }
 }
 
-impl<SINT, ENABLE, DLY> Radar<Enabled, SINT, ENABLE, DLY>
+#[impl_state]
+impl<SINT, ENABLE, DLY> Radar<SINT, ENABLE, DLY>
 where
     SINT: Wait,
     ENABLE: OutputPin,
     DLY: DelayNs,
 {
+    #[require(Enabled)]
     pub async fn new<SPI>(
         id: u32,
         spi: &'static mut SPI,
         interrupt: SINT,
         mut enable_pin: ENABLE,
         mut delay: DLY,
-    ) -> Radar<Enabled, SINT, ENABLE, DLY>
+    ) -> Self
     where
         SPI: SpiDevice<u8, Error = SpiErrorKind> + Send + 'static,
     {
@@ -140,97 +95,46 @@ where
         let config = RadarConfig::default();
         let sensor = Sensor::new(id, enable_pin, delay).expect("Failed to create sensor");
         let processing = Processing::new(&config);
-        Self {
+        Radar {
             id,
             config,
             interrupt,
             sensor,
             processing,
             _hal: hal,
-            _state: PhantomData,
         }
     }
 
+    #[require(Enabled)]
+    #[switch_to(Ready)]
     pub fn prepare_sensor(
         mut self,
         calibration_result: &mut CalibrationResult,
-    ) -> TransitionResult<Ready, Enabled, SINT, ENABLE, DLY> {
+    ) -> Result<Self, SensorError> {
         let mut buf = [0u8; 2560];
         if self
             .sensor
             .prepare(&self.config, calibration_result, &mut buf)
             .is_ok()
         {
-            Ok(Radar {
-                id: self.id,
-                config: self.config,
-                sensor: self.sensor,
-                processing: self.processing,
-                interrupt: self.interrupt,
-                _hal: self._hal,
-                _state: PhantomData,
-            })
+            Ok(self)
         } else {
-            Err(TransitionError {
-                radar: self,
-                error: SensorError::PrepareFailed,
-            })
+            Err(SensorError::PrepareFailed)
         }
     }
-}
 
-impl<SINT, ENABLE, DLY> Radar<Hibernating, SINT, ENABLE, DLY>
-where
-    SINT: Wait,
-    ENABLE: OutputPin,
-    DLY: DelayNs,
-{
-    pub fn hibernate_off(self) -> TransitionResult<Ready, Hibernating, SINT, ENABLE, DLY> {
+    #[require(Hibernating)]
+    #[switch_to(Ready)]
+    pub fn hibernate_off(self) -> Result<Self, SensorError> {
         if self.sensor.hibernate_off().is_ok() {
-            Ok(Radar {
-                id: self.id,
-                config: self.config,
-                sensor: self.sensor,
-                processing: self.processing,
-                interrupt: self.interrupt,
-                _hal: self._hal,
-                _state: PhantomData,
-            })
+            Ok(self)
         } else {
-            Err(TransitionError {
-                radar: self,
-                error: SensorError::HibernationOffFailed,
-            })
+            Err(SensorError::HibernationOffFailed)
         }
     }
-}
 
-impl<SINT, ENABLE, DLY> Radar<Ready, SINT, ENABLE, DLY>
-where
-    SINT: Wait,
-    ENABLE: OutputPin,
-    DLY: DelayNs,
-{
-    /// Starts a radar measurement with a previously prepared configuration.
-    ///
-    /// This function initiates a radar measurement based on a configuration that must have been
-    /// set up and prepared in advance. Ensure the sensor is powered on and calibration and
-    /// preparation steps have been completed before calling this function.
-    ///
-    /// # Preconditions
-    ///
-    /// - The sensor must be powered on.
-    /// - `calibrate` must have been successfully called.
-    /// - `prepare` must have been successfully called.
-    ///
-    /// # Arguments
-    ///
-    /// * `sensor` - The sensor instance to use for measurement.
-    ///
-    /// # Returns
-    ///
-    /// `Ok(())` if the measurement was successfully started, `Err(SensorError)` otherwise.
-    pub async fn measure<'a>(&mut self, data: &mut [u8]) -> Result<(), SensorError> {
+    #[require(Ready)]
+    pub async fn measure(&mut self, data: &mut [u8]) -> Result<(), SensorError> {
         if (self.sensor.measure(&mut self.interrupt).await).is_ok() {
             if self.sensor.read(data).is_ok() {
                 Ok(())
@@ -242,74 +146,43 @@ where
         }
     }
 
-    pub fn hibernate_on(mut self) -> TransitionResult<Hibernating, Ready, SINT, ENABLE, DLY> {
+    #[require(Ready)]
+    #[switch_to(Hibernating)]
+    pub fn hibernate_on(mut self) -> Result<Self, SensorError> {
         if self.sensor.hibernate_on().is_ok() {
-            Ok(Radar {
-                id: self.id,
-                config: self.config,
-                sensor: self.sensor,
-                processing: self.processing,
-                interrupt: self.interrupt,
-                _hal: self._hal,
-                _state: PhantomData,
-            })
+            Ok(self)
         } else {
-            Err(TransitionError {
-                radar: self,
-                error: SensorError::HibernationOnFailed,
-            })
+            Err(SensorError::HibernationOnFailed)
         }
     }
-}
 
-impl<STATE, SINT, ENABLE, DLY> Radar<STATE, SINT, ENABLE, DLY>
-where
-    SINT: Wait,
-    STATE: RadarState,
-    ENABLE: OutputPin,
-    DLY: DelayNs,
-{
+    #[require(A)]
     pub fn id(&self) -> u32 {
         self.id
     }
 
+    #[require(A)]
     pub async fn calibrate(&mut self) -> Result<CalibrationResult, SensorError> {
         let mut buf = [0u8; 5560];
         self.sensor.calibrate(&mut self.interrupt, &mut buf).await
     }
 
-    /// Turns the radar sensor off then on again.
+    #[require(A)]
     pub async fn reset_sensor(&mut self) {
         self.sensor.reset_sensor().await;
     }
 
-    /// Checks if a sensor is connected and responsive.
-    ///
-    /// Note that the sensor must be powered on before calling this function.
-    ///
-    /// # Returns
-    ///
-    /// `true` if it is possible to communicate with the sensor, `false` otherwise.
+    #[require(A)]
     pub fn is_connected(&self) -> bool {
         unsafe { acc_sensor_connected(self.id as acc_sensor_id_t) }
     }
 
-    /// Checks the status of the sensor.
-    ///
-    /// This function reads out the internal status from the sensor and can be used for
-    /// debugging purposes. The log is printed out through the log interface.
-    /// The sensor must be powered on before calling this function.
+    #[require(A)]
     pub fn check_status(&self) {
         self.sensor.check_status();
     }
 
-    /// Gets a mutable pointer to the underlying sensor.
-    ///
-    /// # Safety
-    /// - The returned pointer is only valid while the Radar instance exists
-    /// - The pointer must not be used after the sensor is disabled or reset
-    /// - Only one mutable reference can exist at a time
-    /// - The caller must not violate the state transition requirements
+    #[require(A)]
     pub unsafe fn inner_sensor(&self) -> *mut acc_sensor_t {
         debug_assert!(!self.sensor.inner().is_null(), "Sensor pointer is null");
         self.sensor.inner()
