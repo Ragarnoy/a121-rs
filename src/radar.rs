@@ -1,11 +1,12 @@
-use core::fmt::{Debug, Display};
-use state_shift::{impl_state, type_state};
+pub mod version;
 
-use a121_sys::{acc_sensor_connected, acc_sensor_id_t, acc_sensor_t, acc_version_get_hex};
+use a121_sys::{acc_sensor_connected, acc_sensor_id_t, acc_sensor_t};
+use core::marker::PhantomData;
 use embedded_hal::digital::OutputPin;
 use embedded_hal::spi::{ErrorKind as SpiErrorKind, SpiDevice};
 use embedded_hal_async::delay::DelayNs;
 use embedded_hal_async::digital::Wait;
+use state_shift::{impl_state, type_state};
 
 use crate::config::RadarConfig;
 use crate::hal::AccHalImpl;
@@ -32,44 +33,6 @@ where
     _hal: AccHalImpl,
 }
 
-/// Radar Sensor Software Version
-/// 0xMMMMmmPP where M is major, m is minor and P is patch
-#[derive(Debug)]
-pub struct RssVersion {
-    version: u32,
-}
-
-#[cfg(feature = "defmt")]
-impl defmt::Format for RssVersion {
-    fn format(&self, f: defmt::Formatter) {
-        defmt::write!(f, "{}.{}.{}", self.major(), self.minor(), self.patch())
-    }
-}
-
-impl Display for RssVersion {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{}.{}.{}", self.major(), self.minor(), self.patch())
-    }
-}
-
-impl RssVersion {
-    pub fn new(version: u32) -> Self {
-        Self { version }
-    }
-
-    pub fn major(&self) -> u16 {
-        ((self.version & 0xFFFF0000) >> 16) as u16
-    }
-
-    pub fn minor(&self) -> u8 {
-        ((self.version & 0x0000FF00) >> 8) as u8
-    }
-
-    pub fn patch(&self) -> u8 {
-        (self.version & 0x000000FF) as u8
-    }
-}
-
 #[impl_state]
 impl<SINT, ENABLE, DLY> Radar<SINT, ENABLE, DLY>
 where
@@ -84,7 +47,7 @@ where
         interrupt: SINT,
         mut enable_pin: ENABLE,
         mut delay: DLY,
-    ) -> Self
+    ) -> Radar<SINT, ENABLE, DLY>
     where
         SPI: SpiDevice<u8, Error = SpiErrorKind> + Send + 'static,
     {
@@ -110,14 +73,22 @@ where
     pub fn prepare_sensor(
         mut self,
         calibration_result: &mut CalibrationResult,
-    ) -> Result<Self, SensorError> {
+    ) -> Result<Radar<SINT, ENABLE, DLY>, SensorError> {
         let mut buf = [0u8; 2560];
         if self
             .sensor
             .prepare(&self.config, calibration_result, &mut buf)
             .is_ok()
         {
-            Ok(self)
+            Ok(Radar {
+                id: self.id,
+                config: self.config,
+                sensor: self.sensor,
+                processing: self.processing,
+                interrupt: self.interrupt,
+                _hal: self._hal,
+                _state: PhantomData,
+            })
         } else {
             Err(SensorError::PrepareFailed)
         }
@@ -125,9 +96,17 @@ where
 
     #[require(Hibernating)]
     #[switch_to(Ready)]
-    pub fn hibernate_off(self) -> Result<Self, SensorError> {
+    pub fn hibernate_off(self) -> Result<Radar<SINT, ENABLE, DLY>, SensorError> {
         if self.sensor.hibernate_off().is_ok() {
-            Ok(self)
+            Ok(Radar {
+                id: self.id,
+                config: self.config,
+                sensor: self.sensor,
+                processing: self.processing,
+                interrupt: self.interrupt,
+                _hal: self._hal,
+                _state: PhantomData,
+            })
         } else {
             Err(SensorError::HibernationOffFailed)
         }
@@ -148,14 +127,23 @@ where
 
     #[require(Ready)]
     #[switch_to(Hibernating)]
-    pub fn hibernate_on(mut self) -> Result<Self, SensorError> {
+    pub fn hibernate_on(mut self) -> Result<Radar<SINT, ENABLE, DLY>, SensorError> {
         if self.sensor.hibernate_on().is_ok() {
-            Ok(self)
+            Ok(Radar {
+                id: self.id,
+                config: self.config,
+                sensor: self.sensor,
+                processing: self.processing,
+                interrupt: self.interrupt,
+                _hal: self._hal,
+                _state: PhantomData,
+            })
         } else {
             Err(SensorError::HibernationOnFailed)
         }
     }
 
+    // Methods available in all states
     #[require(A)]
     pub fn id(&self) -> u32 {
         self.id
@@ -187,10 +175,4 @@ where
         debug_assert!(!self.sensor.inner().is_null(), "Sensor pointer is null");
         self.sensor.inner()
     }
-}
-
-/// Get the RSS version of the sensor
-pub fn rss_version() -> RssVersion {
-    let version = unsafe { acc_version_get_hex() };
-    RssVersion::new(version)
 }
