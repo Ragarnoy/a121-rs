@@ -3,7 +3,7 @@ pub mod results;
 
 use crate::detector::presence::config::PresenceConfig;
 use crate::detector::presence::results::{PresenceMetadata, PresenceResult, ProcessDataError};
-use crate::radar::{Radar, Ready};
+use crate::radar::{Radar, RadarReady};
 use crate::sensor::calibration::CalibrationResult;
 use crate::sensor::error::SensorError;
 use a121_sys::*;
@@ -54,7 +54,7 @@ where
     ENABLE: OutputPin,
     DLY: DelayNs,
 {
-    pub radar: &'radar mut Radar<Ready, SINT, ENABLE, DLY>,
+    pub radar: &'radar mut Radar<SINT, ENABLE, DLY, RadarReady>,
     inner: InnerPresenceDetector,
     pub config: PresenceConfig,
 }
@@ -65,7 +65,7 @@ where
     ENABLE: OutputPin,
     DLY: DelayNs,
 {
-    pub fn new(radar: &'radar mut Radar<Ready, SINT, ENABLE, DLY>) -> Self {
+    pub fn new(radar: &'radar mut Radar<SINT, ENABLE, DLY, RadarReady>) -> Self {
         let config = PresenceConfig::default();
         let inner = InnerPresenceDetector::new(&config);
         Self {
@@ -76,7 +76,7 @@ where
     }
 
     pub fn with_config(
-        radar: &'radar mut Radar<Ready, SINT, ENABLE, DLY>,
+        radar: &'radar mut Radar<SINT, ENABLE, DLY, RadarReady>,
         config: PresenceConfig,
     ) -> Self {
         let inner = InnerPresenceDetector::new(&config);

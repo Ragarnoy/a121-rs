@@ -3,7 +3,7 @@ pub mod results;
 
 use crate::detector::distance::config::RadarDistanceConfig;
 use crate::detector::distance::results::{DistanceSizes, ProcessDataError};
-use crate::radar::{Radar, Ready};
+use crate::radar::{Radar, RadarReady};
 use crate::sensor::calibration::CalibrationResult;
 use crate::sensor::error::SensorError;
 use a121_sys::*;
@@ -48,7 +48,7 @@ where
     DLY: DelayNs,
 {
     /// Reference to the radar system, configured and ready for operation.
-    pub radar: &'radar mut Radar<Ready, SINT, ENABLE, DLY>,
+    pub radar: &'radar mut Radar<SINT, ENABLE, DLY, RadarReady>,
     inner: InnerRadarDistanceDetector,
     /// Configuration for the radar distance detection.
     pub config: RadarDistanceConfig,
@@ -61,7 +61,7 @@ where
     DLY: DelayNs,
 {
     /// Constructs a new radar distance detector with default configuration.
-    pub fn new(radar: &'radar mut Radar<Ready, SINT, ENABLE, DLY>) -> Self {
+    pub fn new(radar: &'radar mut Radar<SINT, ENABLE, DLY, RadarReady>) -> Self {
         let config = RadarDistanceConfig::default();
         let inner = InnerRadarDistanceDetector::new(&config);
         #[cfg(feature = "defmt")]
@@ -75,7 +75,7 @@ where
 
     /// Constructs a new radar distance detector with the provided configuration.
     pub fn with_config(
-        radar: &'radar mut Radar<Ready, SINT, ENABLE, DLY>,
+        radar: &'radar mut Radar<SINT, ENABLE, DLY, RadarReady>,
         config: RadarDistanceConfig,
     ) -> Self {
         let inner = InnerRadarDistanceDetector::new(&config);
