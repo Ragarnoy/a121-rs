@@ -55,12 +55,12 @@ If you are using a platform that does not provide these functions, you can enabl
 See the [documentation](https://docs.rs/a121-rs) for detailed usage instructions and examples.
 
 ## Feature flags
-feature | description
---- | ---
-distance | Enable distance measurement module
-presence | Enable presence detection module (coming soon)
-libm | Use libm crate for floating point operations
-nightly-logger | If the C wrapper for logging does not compile with stable rust, enable this feature to use nightly rust with a custom logger
+| feature        | description                                                                                                                  |
+|----------------|------------------------------------------------------------------------------------------------------------------------------|
+| distance       | Enable distance measurement module                                                                                           |
+| presence       | Enable presence detection module (coming soon)                                                                               |
+| libm           | Use libm crate for floating point operations                                                                                 |
+| nightly-logger | If the C wrapper for logging does not compile with stable rust, enable this feature to use nightly rust with a custom logger |
 
 ## Examples
 
