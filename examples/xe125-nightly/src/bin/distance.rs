@@ -16,9 +16,8 @@ use embedded_hal_bus::spi::ExclusiveDevice;
 
 use a121_rs::detector::distance::config::RadarDistanceConfig;
 use a121_rs::detector::distance::RadarDistanceDetector;
-use a121_rs::radar;
+use a121_rs::radar::version::rss_version;
 use a121_rs::radar::Radar;
-use radar::rss_version;
 use xe125_nightly::adapter::SpiAdapter;
 use xe125_nightly::*;
 
