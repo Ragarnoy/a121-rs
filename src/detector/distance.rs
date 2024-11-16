@@ -3,9 +3,10 @@ pub mod results;
 
 use crate::detector::distance::config::RadarDistanceConfig;
 use crate::detector::distance::results::{DistanceSizes, ProcessDataError};
+use crate::radar::error::RadarError;
 use crate::radar::{Radar, RadarReady};
 use crate::sensor::calibration::CalibrationResult;
-use crate::sensor::error::SensorError;
+use crate::sensor::error::SensorError::*;
 use a121_sys::*;
 use core::ffi::c_void;
 use embedded_hal::digital::OutputPin;
@@ -94,7 +95,7 @@ where
         sensor_cal_result: &CalibrationResult,
         buffer: &mut [u8],
         detector_cal_result_static: &mut [u8],
-    ) -> Result<DynamicResult, SensorError> {
+    ) -> Result<DynamicResult, RadarError> {
         let mut calibration_complete: bool = false;
         let mut detector_cal_result_dynamic = DynamicResult::default();
         let distances = DistanceSizes::new(&self.inner);
@@ -103,7 +104,7 @@ where
         if buffer.len() < distances.buffer_size
             || detector_cal_result_static.len() < distances.detector_cal_result_static_size
         {
-            return Err(SensorError::BufferTooSmall);
+            return Err(RadarError::SensorError(BufferTooSmall));
         }
 
         loop {
@@ -124,7 +125,7 @@ where
 
             // Check if the calibration attempt was successful
             if !calibration_attempt {
-                return Err(SensorError::CalibrationFailed);
+                return Err(RadarError::SensorError(CalibrationFailed));
             }
 
             // Break the loop if calibration is complete
@@ -159,7 +160,7 @@ where
         &mut self,
         sensor_cal_result: &CalibrationResult,
         buffer: &mut [u8],
-    ) -> Result<DynamicResult, SensorError> {
+    ) -> Result<DynamicResult, RadarError> {
         let mut calibration_complete: bool = false;
         let mut detector_cal_result_dynamic = DynamicResult::default();
         let calibration_attempt: bool;
@@ -200,7 +201,7 @@ where
 
             Ok(detector_cal_result_dynamic)
         } else {
-            Err(SensorError::CalibrationFailed)
+            Err(RadarError::SensorError(CalibrationFailed))
         }
     }
 
@@ -211,7 +212,7 @@ where
         &mut self,
         sensor_cal_result: &CalibrationResult,
         buffer: &mut [u8],
-    ) -> Result<(), SensorError> {
+    ) -> Result<(), RadarError> {
         unsafe {
             if acc_detector_distance_prepare(
                 self.inner.inner(),
@@ -223,7 +224,7 @@ where
             ) {
                 Ok(())
             } else {
-                Err(SensorError::PrepareFailed)
+                Err(RadarError::SensorError(PrepareFailed))
             }
         }
     }
@@ -231,14 +232,14 @@ where
     /// Performs a distance measurement operation asynchronously.
     ///
     /// This function initiates a measurement operation, returning the results asynchronously.
-    pub async fn measure(&mut self, data: &mut [u8]) -> Result<(), SensorError> {
+    pub async fn measure(&mut self, data: &mut [u8]) -> Result<(), RadarError> {
         self.radar.measure(data).await
     }
 
     /// Calibrates the associated radar asynchronously.
     ///
     /// This function performs a calibration operation on the radar, necessary for accurate distance measurements.
-    pub async fn calibrate(&mut self) -> Result<CalibrationResult, SensorError> {
+    pub async fn calibrate(&mut self) -> Result<CalibrationResult, RadarError> {
         self.radar.calibrate().await
     }
 
@@ -252,7 +253,7 @@ where
         detector_cal_result_dynamic: &mut DynamicResult,
     ) -> Result<DistanceResult<'_>, ProcessDataError> {
         let mut result_available: bool = false;
-        let mut distance_result = DistanceResult::new(&self.radar.config);
+        let mut distance_result = DistanceResult::new(self.radar.config());
         let mut distance_result_ptr: acc_detector_distance_result_t = distance_result.inner();
 
         let process_attempt: bool = unsafe {
