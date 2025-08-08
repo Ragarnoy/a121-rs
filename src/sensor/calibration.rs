@@ -87,7 +87,7 @@ impl From<CalibrationResult> for CalibrationInfo {
 
 impl Default for CalibrationResult {
     fn default() -> Self {
-        let inner = acc_cal_result_t { data: [0; 48] };
+        let inner = acc_cal_result_t { data: [0; 60] };
         Self { inner }
     }
 }

@@ -9,7 +9,7 @@ use core::cell::RefCell;
 use defmt::{debug, info, trace, warn};
 use embassy_executor::Spawner;
 use embassy_stm32::exti::ExtiInput;
-use embassy_stm32::gpio::{Input, Level, Output, Pull, Speed};
+use embassy_stm32::gpio::{Level, Output, Pull, Speed};
 use embassy_stm32::spi::Spi;
 use embassy_time::{Delay, Instant};
 use embedded_hal_bus::spi::ExclusiveDevice;
@@ -21,14 +21,18 @@ use a121_rs::radar::Radar;
 use xe125_nightly::adapter::SpiAdapter;
 use xe125_nightly::*;
 
+#[panic_handler]
+fn panic(_info: &core::panic::PanicInfo) -> ! {
+    loop {}
+}
+
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
     let p = embassy_stm32::init(xm125_clock_config());
 
     let enable = Output::new(p.PB12, Level::Low, Speed::VeryHigh); // ENABLE on PB12
     let cs_pin = Output::new(p.PB0, Level::High, Speed::VeryHigh);
-    let input = Input::new(p.PB3, Pull::Up);
-    let interrupt = ExtiInput::new(input, p.EXTI3); // INTERRUPT on PB3 used as 'ready' signal
+    let interrupt = ExtiInput::new(p.PB3, p.EXTI3, Pull::Up); // INTERRUPT on PB3 used as 'ready' signal
     info!("GPIO initialized.");
 
     let spi = Spi::new(
@@ -36,8 +40,8 @@ async fn main(_spawner: Spawner) {
         p.PA5, // SCK
         p.PA7, // MOSI
         p.PA6, // MISO
-        p.DMA2_CH3,
-        p.DMA2_CH2,
+        p.DMA2_CH4, // TX DMA for SPI1
+        p.DMA2_CH3, // RX DMA for SPI1
         xm125_spi_config(),
     );
     let exclusive_device = ExclusiveDevice::new(spi, cs_pin, Delay);
@@ -58,7 +62,7 @@ async fn main(_spawner: Spawner) {
     let mut radar = radar.prepare_sensor(&mut calibration).unwrap();
 
     let mut dist_config = RadarDistanceConfig::balanced();
-    dist_config.set_interval(4.0..=5.5);
+    dist_config.set_interval(0.7..=1.5);
     let mut distance = RadarDistanceDetector::with_config(&mut radar, dist_config);
     let mut buffer = vec![0u8; distance.get_distance_buffer_size()];
     let mut static_cal_result = vec![0u8; distance.get_static_result_buffer_size()];

@@ -5,17 +5,16 @@ extern crate alloc;
 use core::cell::RefCell;
 
 use embassy_stm32::gpio::Output;
-use embassy_stm32::peripherals::{DMA2_CH2, DMA2_CH3, PB0, SPI1};
+use embassy_stm32::mode::Async;
+use embassy_stm32::rcc::mux::ClockMux;
 use embassy_stm32::rcc::{
-    ClockSrc, LsConfig, Pll, PllMul, PllPDiv, PllPreDiv, PllQDiv, PllRDiv, PllSource,
+    LsConfig, Pll, PllMul, PllPDiv, PllPreDiv, PllQDiv, PllRDiv, PllSource,
 };
 use embassy_stm32::spi::{Config, Spi};
 use embassy_stm32::time::Hertz;
 use embassy_time::Delay;
 use embedded_hal_bus::spi::ExclusiveDevice;
 use talc::{ClaimOnOom, Span, Talc, Talck};
-use tinyrlibc as _;
-use {defmt_rtt as _, panic_probe as _};
 
 use crate::adapter::SpiAdapter;
 
@@ -27,12 +26,12 @@ static mut ARENA: [u8; 16000] = [0u8; 16000];
 static ALLOCATOR: Talck<spin::Mutex<()>, ClaimOnOom> = Talc::new(unsafe {
     // if we're in a hosted environment, the Rust runtime may allocate before
     // main() is called, so we need to initialize the arena automatically
-    ClaimOnOom::new(Span::from_const_array(core::ptr::addr_of!(ARENA)))
+    ClaimOnOom::new(Span::from_array(core::ptr::addr_of_mut!(ARENA)))
 })
 .lock();
 
 pub type SpiDeviceMutex =
-    ExclusiveDevice<Spi<'static, SPI1, DMA2_CH3, DMA2_CH2>, Output<'static, PB0>, Delay>;
+    ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>;
 pub static mut SPI_DEVICE: Option<RefCell<SpiAdapter<SpiDeviceMutex>>> = None;
 
 pub fn xm125_spi_config() -> Config {
@@ -46,7 +45,7 @@ pub fn xm125_clock_config() -> embassy_stm32::Config {
     config.rcc.hsi = true;
     config.rcc.hse = None;
     config.rcc.msi = None;
-    config.rcc.mux = ClockSrc::PLL1_R;
+    config.rcc.mux = ClockMux::default();
     config.rcc.pll = Some(Pll {
         source: PllSource::HSI,
         prediv: PllPreDiv::DIV1,
