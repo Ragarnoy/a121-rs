@@ -147,10 +147,10 @@ where
     }
 
     pub async fn detect_presence(
-        &mut self,
+        &'_ mut self,
         buffer: &mut [u8],
-    ) -> Result<PresenceResult, ProcessDataError> {
-        let mut result = PresenceResult::default();
+    ) -> Result<PresenceResult<'_>, ProcessDataError> {
+        let mut result = PresenceResult::new();
         let detection_success = unsafe {
             acc_detector_presence_process(
                 self.inner.inner_mut(),
