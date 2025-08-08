@@ -1,5 +1,4 @@
 #![cfg_attr(feature = "nightly-logger", feature(c_variadic))]
-#![cfg_attr(not(any(test, feature = "std")), no_std)]
 
 //! The `a121-rs` library offers Rust bindings for interfacing with the Acconeer A121 radar sensor,
 //! designed for embedded systems. Unlike traditional networking or sensor libraries, `a121-rs` focuses
@@ -36,6 +35,10 @@
 //! different hardware platforms and provide a starting point for integrating the A121 sensor into
 //! your projects.
 //!
+
+#![no_std]
+#[cfg(any(test, feature = "std"))]
+extern crate std;
 
 extern crate alloc;
 

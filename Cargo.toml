@@ -19,12 +19,10 @@ defmt = { version = "1.0.1", optional = true }
 
 embedded-hal = "1.0.0"
 embedded-hal-async = "1.0.0"
-embassy-sync = { version = "0.7.0", features = [ "defmt" ] }
+embassy-sync = { git = "https://github.com/embassy-rs/embassy.git", features = [ "defmt" ] }
 
 num = { version = "0.4", default-features = false }
-libm = { version = "0.2.8", default-features = false, optional = true }
-
-state-shift = { git = "https://github.com/ozgunozerk/state-shift", branch = "main" }
+libm = { version = "0.2.15", default-features = false, optional = true }
 
 [features]
 distance = ["a121-sys/distance"]

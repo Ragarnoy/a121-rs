@@ -84,8 +84,13 @@ impl RadarConfig {
         #[cfg(feature = "defmt")]
         defmt::trace!("Creating radar configuration");
         let inner = unsafe { acc_config_create() };
+        if inner.is_null() {
+            #[cfg(feature = "defmt")]
+            defmt::error!("Failed to create radar configuration: acc_config_create returned null");
+            panic!("Failed to create radar configuration");
+        }
         #[cfg(feature = "defmt")]
-        defmt::trace!("Radar configuration created");
+        defmt::trace!("Radar configuration created successfully");
         Self {
             inner,
             num_subsweep: None,

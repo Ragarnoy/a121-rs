@@ -3,7 +3,7 @@ pub mod results;
 
 use crate::detector::distance::config::RadarDistanceConfig;
 use crate::detector::distance::results::{DistanceSizes, ProcessDataError};
-use crate::radar::{Radar, RadarReady};
+use crate::radar::{Radar, RadarState};
 use crate::sensor::calibration::CalibrationResult;
 use crate::sensor::error::SensorError;
 use a121_sys::*;
@@ -48,7 +48,7 @@ where
     DLY: DelayNs,
 {
     /// Reference to the radar system, configured and ready for operation.
-    pub radar: &'radar mut Radar<SINT, ENABLE, DLY, RadarReady>,
+    pub radar: &'radar mut Radar<SINT, ENABLE, DLY>,
     inner: InnerRadarDistanceDetector,
     /// Configuration for the radar distance detection.
     pub config: RadarDistanceConfig,
@@ -61,7 +61,11 @@ where
     DLY: DelayNs,
 {
     /// Constructs a new radar distance detector with default configuration.
-    pub fn new(radar: &'radar mut Radar<SINT, ENABLE, DLY, RadarReady>) -> Self {
+    /// 
+    /// # Panics
+    /// Panics if the radar is not in Ready state.
+    pub fn new(radar: &'radar mut Radar<SINT, ENABLE, DLY>) -> Self {
+        assert_eq!(radar.state(), RadarState::Ready, "Radar must be in Ready state");
         let config = RadarDistanceConfig::default();
         let inner = InnerRadarDistanceDetector::new(&config);
         #[cfg(feature = "defmt")]
@@ -74,10 +78,14 @@ where
     }
 
     /// Constructs a new radar distance detector with the provided configuration.
+    /// 
+    /// # Panics
+    /// Panics if the radar is not in Ready state.
     pub fn with_config(
-        radar: &'radar mut Radar<SINT, ENABLE, DLY, RadarReady>,
+        radar: &'radar mut Radar<SINT, ENABLE, DLY>,
         config: RadarDistanceConfig,
     ) -> Self {
+        assert_eq!(radar.state(), RadarState::Ready, "Radar must be in Ready state");
         let inner = InnerRadarDistanceDetector::new(&config);
         #[cfg(feature = "defmt")]
         defmt::trace!("{:?}", DistanceSizes::new(&inner));
