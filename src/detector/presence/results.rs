@@ -134,18 +134,16 @@ impl PresenceMetadata {
 impl PresenceMetadata {
     /// Create a new PresenceMetadata with proper radar config and processing metadata
     pub fn new(radar_config: &RadarConfig, processing_metadata: &mut ProcessingMetaData) -> Self {
-        unsafe {
-            Self {
-                inner: acc_detector_presence_metadata_t {
-                    start_m: 0.0,
-                    end_m: 6.0,
-                    step_length_m: 0.0,
-                    num_points: 0,
-                    profile: acc_config_profile_t_ACC_CONFIG_PROFILE_5,
-                    sensor_config: radar_config.ptr(),
-                    processing_metadata: processing_metadata.mut_ptr(),
-                },
-            }
+        Self {
+            inner: acc_detector_presence_metadata_t {
+                start_m: 0.0,
+                end_m: 6.0,
+                step_length_m: 0.0,
+                num_points: 0,
+                profile: acc_config_profile_t_ACC_CONFIG_PROFILE_5,
+                sensor_config: radar_config.ptr(),
+                processing_metadata: unsafe { processing_metadata.mut_ptr() },
+            },
         }
     }
 }

@@ -4,6 +4,7 @@ extern crate alloc;
 
 use core::cell::RefCell;
 use core::ffi::c_void;
+use core::ptr::addr_of_mut;
 use embassy_stm32::gpio::Output;
 use embassy_stm32::mode::Async;
 use embassy_stm32::rcc::{
@@ -26,7 +27,7 @@ static mut HEAP: [u8; HEAP_SIZE] = [0; HEAP_SIZE];
 #[global_allocator]
 pub static ALLOCATOR: Talck<spin::Mutex<()>, ClaimOnOom> = Talc::new(unsafe {
     // Initialize with the heap memory using proper slice conversion
-    ClaimOnOom::new(Span::from_array(&raw mut HEAP))
+    ClaimOnOom::new(Span::from_array(addr_of_mut!(HEAP)))
 })
 .lock();
 
@@ -74,7 +75,10 @@ extern "C" fn malloc(size: usize) -> *mut c_void {
     }
 
     // Allocate extra space to store the size before the user data
-    let total_size = size + core::mem::size_of::<usize>();
+    let total_size = match size.checked_add(size_of::<usize>()) {
+        Some(v) => v,
+        None => return core::ptr::null_mut(),
+    };
     let layout = core::alloc::Layout::from_size_align(total_size, 8)
         .unwrap_or_else(|_| core::panic!("Invalid malloc size: {}", size));
 
@@ -107,10 +111,11 @@ extern "C" fn free(ptr: *mut c_void) {
         let size = *size_ptr;
 
         // Create the layout that was used for allocation
-        let layout = core::alloc::Layout::from_size_align_unchecked(
-            size + core::mem::size_of::<usize>(), // Include the size prefix
-            8,
-        );
+        let total_size = size
+            .checked_add(size_of::<usize>())
+            .expect("Size overflow in free()");
+        let layout =
+            core::alloc::Layout::from_size_align(total_size, 8).expect("Invalid layout in free()");
 
         // Deallocate using talc
         ALLOCATOR.dealloc(size_ptr as *mut u8, layout);

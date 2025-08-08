@@ -113,10 +113,9 @@ impl AccHalImpl {
     ///
     /// This method should be called to register the HAL implementation, allowing the
     /// radar sensor to communicate using the provided SPI interface.
+    /// # Errors
     ///
-    /// # Panics
-    ///
-    /// Panics if the HAL registration fails.
+    /// Returns `SensorError::InitFailed` when the HAL registration fails.
     #[inline(always)]
     pub fn register(&self) -> Result<(), crate::sensor::error::SensorError> {
         #[cfg(feature = "defmt")]

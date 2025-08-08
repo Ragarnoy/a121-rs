@@ -34,6 +34,7 @@ where
     pub(crate) interrupt: SINT,
     _hal: AccHalImpl,
     state: RadarState,
+    scratch: [u8; 5_560],
 }
 
 impl<SINT, ENABLE, DLY> Radar<SINT, ENABLE, DLY>
@@ -80,6 +81,7 @@ where
             processing,
             _hal: hal,
             state: RadarState::Enabled,
+            scratch: [0u8; 5_560],
         })
     }
 
@@ -91,9 +93,8 @@ where
             return Err(SensorError::NotReady);
         }
 
-        let mut buf = [0u8; 2560];
-        self.sensor
-            .prepare(&self.config, calibration_result, &mut buf)?;
+        let buf = &mut self.scratch[..2_560];
+        self.sensor.prepare(&self.config, calibration_result, buf)?;
         self.state = RadarState::Ready;
         Ok(())
     }
@@ -140,8 +141,8 @@ where
 
     /// Calibrate the sensor - available in any state
     pub async fn calibrate(&mut self) -> Result<CalibrationResult, SensorError> {
-        let mut buf = [0u8; 5560];
-        self.sensor.calibrate(&mut self.interrupt, &mut buf).await
+        let buf = &mut self.scratch[..];
+        self.sensor.calibrate(&mut self.interrupt, buf).await
     }
 
     /// Reset the sensor - available in any state
