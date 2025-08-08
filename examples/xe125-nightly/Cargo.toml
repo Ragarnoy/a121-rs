@@ -24,7 +24,8 @@ embassy-time = { git = "https://github.com/embassy-rs/embassy.git", features = [
 embassy-stm32 = { git = "https://github.com/embassy-rs/embassy.git", features = [ "defmt", "unstable-pac", "stm32l431cb", "memory-x", "time-driver-any", "exti", "chrono"] }
 embedded-hal-bus = { version = "0.3.0"}
 
-linked_list_allocator = "0.10.5"
+talc = "4.4"
+spin = "0.10.0"
 
 [profile.dev]
 lto = true

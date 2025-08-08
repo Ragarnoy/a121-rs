@@ -13,7 +13,7 @@ use embassy_stm32::spi::{Config, Spi};
 use embassy_stm32::time::Hertz;
 use embassy_time::Delay;
 use embedded_hal_bus::spi::ExclusiveDevice;
-use linked_list_allocator::LockedHeap;
+use talc::{ClaimOnOom, Span, Talc, Talck};
 
 use crate::adapter::SpiAdapter;
 
@@ -24,12 +24,13 @@ const HEAP_SIZE: usize = 32 * 1024; // 32KB heap (more space for C library)
 static mut HEAP: [u8; HEAP_SIZE] = [0; HEAP_SIZE];
 
 #[global_allocator]
-pub static ALLOCATOR: LockedHeap = LockedHeap::empty();
+pub static ALLOCATOR: Talck<spin::Mutex<()>, ClaimOnOom> = Talc::new(unsafe {
+    // Initialize with the heap memory using proper slice conversion
+    ClaimOnOom::new(Span::from_array(&raw mut HEAP))
+}).lock();
 
 pub fn init_heap() {
-    unsafe {
-        ALLOCATOR.lock().init(core::ptr::addr_of_mut!(HEAP) as *mut u8, HEAP_SIZE);
-    }
+    // talc is initialized at compile time, no runtime initialization needed
 }
 
 pub type SpiDeviceMutex =
