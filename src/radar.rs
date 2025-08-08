@@ -48,19 +48,19 @@ where
         interrupt: SINT,
         mut enable_pin: ENABLE,
         mut delay: DLY,
-    ) -> Radar<SINT, ENABLE, DLY>
+    ) -> Result<Radar<SINT, ENABLE, DLY>, SensorError>
     where
         SPI: SpiDevice<u8, Error = SpiErrorKind> + Send + 'static,
     {
         // Extended power cycle: ensure sensor is off first for longer
-        enable_pin.set_low().unwrap();
+        enable_pin.set_low().map_err(|_| SensorError::InitFailed)?;
         delay.delay_ms(50).await; // Longer off time
-        enable_pin.set_high().unwrap();
+        enable_pin.set_high().map_err(|_| SensorError::InitFailed)?;
         delay.delay_ms(50).await; // Longer startup time
 
         // Create and register HAL before creating sensor
         let hal = AccHalImpl::new(spi);
-        hal.register();
+        hal.register()?;
 
         // Additional delay after HAL registration for sensor to stabilize
         delay.delay_ms(10).await;
@@ -69,10 +69,10 @@ where
         let config = RadarConfig::default();
 
         // Create sensor after HAL is registered and sensor is stable
-        let sensor = Sensor::new(id, enable_pin, delay).expect("Failed to create sensor");
+        let sensor = Sensor::new(id, enable_pin, delay).ok_or(SensorError::InitFailed)?;
         let processing = Processing::new(&config);
 
-        Radar {
+        Ok(Radar {
             id,
             config,
             interrupt,
@@ -80,7 +80,7 @@ where
             processing,
             _hal: hal,
             state: RadarState::Enabled,
-        }
+        })
     }
 
     pub fn prepare_sensor(

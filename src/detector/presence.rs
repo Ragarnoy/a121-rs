@@ -66,43 +66,35 @@ where
     DLY: DelayNs,
 {
     /// Creates a new presence detector with default configuration.
-    ///
-    /// # Panics
-    /// Panics if the radar is not in Ready state.
-    pub fn new(radar: &'radar mut Radar<SINT, ENABLE, DLY>) -> Self {
-        assert_eq!(
-            radar.state(),
-            RadarState::Ready,
-            "Radar must be in Ready state"
-        );
+    /// Returns an error if the radar is not in Ready state.
+    pub fn new(radar: &'radar mut Radar<SINT, ENABLE, DLY>) -> Result<Self, SensorError> {
+        if radar.state() != RadarState::Ready {
+            return Err(SensorError::NotReady);
+        }
         let config = PresenceConfig::default();
         let inner = InnerPresenceDetector::new(&config);
-        Self {
+        Ok(Self {
             radar,
             inner,
             config,
-        }
+        })
     }
 
     /// Creates a new presence detector with the specified configuration.
-    ///
-    /// # Panics
-    /// Panics if the radar is not in Ready state.
+    /// Returns an error if the radar is not in Ready state.
     pub fn with_config(
         radar: &'radar mut Radar<SINT, ENABLE, DLY>,
         config: PresenceConfig,
-    ) -> Self {
-        assert_eq!(
-            radar.state(),
-            RadarState::Ready,
-            "Radar must be in Ready state"
-        );
+    ) -> Result<Self, SensorError> {
+        if radar.state() != RadarState::Ready {
+            return Err(SensorError::NotReady);
+        }
         let inner = InnerPresenceDetector::new(&config);
-        Self {
+        Ok(Self {
             radar,
             inner,
             config,
-        }
+        })
     }
 
     pub fn presence_metadata(&self) -> &PresenceMetadata {

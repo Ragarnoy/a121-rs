@@ -54,7 +54,9 @@ async fn main(_spawner: Spawner) {
 
     debug!("RSS Version: {}", rss_version());
 
-    let mut radar = Radar::new(1, spi_mut_ref.get_mut(), interrupt, enable, Delay).await;
+    let mut radar = Radar::new(1, spi_mut_ref.get_mut(), interrupt, enable, Delay)
+        .await
+        .unwrap();
     info!("Radar enabled.");
 
     // Check sensor connectivity before calibration
@@ -90,7 +92,7 @@ async fn main(_spawner: Spawner) {
 
     let mut dist_config = RadarDistanceConfig::balanced();
     dist_config.set_interval(0.7..=1.5);
-    let mut distance = RadarDistanceDetector::with_config(&mut radar, dist_config);
+    let mut distance = RadarDistanceDetector::with_config(&mut radar, dist_config).unwrap();
     let mut buffer = vec![0u8; distance.get_distance_buffer_size()];
     let mut static_cal_result = vec![0u8; distance.get_static_result_buffer_size()];
     trace!("Calibrating detector...");
