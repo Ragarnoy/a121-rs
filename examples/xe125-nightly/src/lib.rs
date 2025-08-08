@@ -6,29 +6,31 @@ use core::cell::RefCell;
 
 use embassy_stm32::gpio::Output;
 use embassy_stm32::mode::Async;
-use embassy_stm32::rcc::mux::ClockMux;
 use embassy_stm32::rcc::{
-    LsConfig, Pll, PllMul, PllPDiv, PllPreDiv, PllQDiv, PllRDiv, PllSource,
+    LsConfig, Pll, PllMul, PllPDiv, PllPreDiv, PllQDiv, PllRDiv, PllSource, Sysclk,
 };
 use embassy_stm32::spi::{Config, Spi};
 use embassy_stm32::time::Hertz;
 use embassy_time::Delay;
 use embedded_hal_bus::spi::ExclusiveDevice;
-use talc::{ClaimOnOom, Span, Talc, Talck};
+use linked_list_allocator::LockedHeap;
 
 use crate::adapter::SpiAdapter;
 
 pub mod adapter;
 
-static mut ARENA: [u8; 16000] = [0u8; 16000];
+// Heap for dynamic allocation - increased size for C library usage
+const HEAP_SIZE: usize = 32 * 1024; // 32KB heap (more space for C library)
+static mut HEAP: [u8; HEAP_SIZE] = [0; HEAP_SIZE];
 
 #[global_allocator]
-static ALLOCATOR: Talck<spin::Mutex<()>, ClaimOnOom> = Talc::new(unsafe {
-    // if we're in a hosted environment, the Rust runtime may allocate before
-    // main() is called, so we need to initialize the arena automatically
-    ClaimOnOom::new(Span::from_array(core::ptr::addr_of_mut!(ARENA)))
-})
-.lock();
+pub static ALLOCATOR: LockedHeap = LockedHeap::empty();
+
+pub fn init_heap() {
+    unsafe {
+        ALLOCATOR.lock().init(core::ptr::addr_of_mut!(HEAP) as *mut u8, HEAP_SIZE);
+    }
+}
 
 pub type SpiDeviceMutex =
     ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>;
@@ -45,7 +47,7 @@ pub fn xm125_clock_config() -> embassy_stm32::Config {
     config.rcc.hsi = true;
     config.rcc.hse = None;
     config.rcc.msi = None;
-    config.rcc.mux = ClockMux::default();
+    config.rcc.sys = Sysclk::PLL1_R;
     config.rcc.pll = Some(Pll {
         source: PllSource::HSI,
         prediv: PllPreDiv::DIV1,
