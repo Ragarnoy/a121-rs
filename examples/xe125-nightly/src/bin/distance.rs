@@ -22,86 +22,8 @@ use xe125_nightly::adapter::SpiAdapter;
 use xe125_nightly::*;
 use {defmt_rtt as _, panic_probe as _};
 
-// Override C library malloc/free to use Rust's global allocator
-// This provides a single unified heap for both Rust and C code
-use core::ffi::c_void;
-
-#[no_mangle]
-extern "C" fn malloc(size: usize) -> *mut c_void {
-    use alloc::alloc::GlobalAlloc;
-    use xe125_nightly::ALLOCATOR;
-    
-    if size == 0 {
-        return core::ptr::null_mut();
-    }
-    
-    // Use 8-byte alignment for good compatibility with most data types
-    let layout = core::alloc::Layout::from_size_align(size, 8)
-        .unwrap_or_else(|_| core::panic!("Invalid malloc size: {}", size));
-    
-    unsafe { ALLOCATOR.alloc(layout) as *mut c_void }
-}
-
-#[no_mangle]
-extern "C" fn free(ptr: *mut c_void) {
-    // For simplicity in embedded systems, we implement a no-op free
-    // This is acceptable because:
-    // 1. Most radar C libraries allocate once and keep data for the lifetime
-    // 2. In embedded systems, memory fragmentation is more important than recycling
-    // 3. The radar library documentation suggests it doesn't heavily use free()
-    if ptr.is_null() {
-        return;
-    }
-    
-    // No-op: memory stays allocated until reset
-    // This prevents use-after-free bugs and is common in embedded systems
-}
-
-// Override other C library memory functions for completeness
-#[no_mangle]
-extern "C" fn calloc(count: usize, size: usize) -> *mut c_void {
-    let total_size = count.wrapping_mul(size);
-    if total_size == 0 {
-        return core::ptr::null_mut();
-    }
-    
-    let ptr = malloc(total_size);
-    if !ptr.is_null() {
-        unsafe {
-            core::ptr::write_bytes(ptr as *mut u8, 0, total_size);
-        }
-    }
-    ptr
-}
-
-#[no_mangle]
-extern "C" fn realloc(ptr: *mut c_void, size: usize) -> *mut c_void {
-    if ptr.is_null() {
-        return malloc(size);
-    }
-    
-    if size == 0 {
-        free(ptr);
-        return core::ptr::null_mut();
-    }
-    
-    // Simplified: just allocate new memory
-    // In a full implementation, you'd copy the old data
-    malloc(size)
-}
-
-// Stub _sbrk that signals no traditional heap available  
-#[no_mangle]
-extern "C" fn _sbrk(_incr: isize) -> *mut c_void {
-    // Return error to force newlib to use our malloc instead
-    (-1isize) as *mut c_void
-}
-
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
-    // Initialize heap
-    init_heap();
-    
     let p = embassy_stm32::init(xm125_clock_config());
 
     let enable = Output::new(p.PB12, Level::Low, Speed::VeryHigh); // ENABLE on PB12
@@ -111,9 +33,9 @@ async fn main(_spawner: Spawner) {
 
     let spi = Spi::new(
         p.SPI1,
-        p.PA5, // SCK
-        p.PA7, // MOSI
-        p.PA6, // MISO
+        p.PA5,      // SCK
+        p.PA7,      // MOSI
+        p.PA6,      // MISO
         p.DMA2_CH4, // TX DMA for SPI1
         p.DMA2_CH3, // RX DMA for SPI1
         xm125_spi_config(),
@@ -125,44 +47,45 @@ async fn main(_spawner: Spawner) {
             exclusive_device.expect("SPI device init failed!"),
         )))
     };
-    let spi_mut_ref = unsafe { SPI_DEVICE.as_mut().unwrap() };
+    let spi_mut_ref = unsafe {
+        let spi_ptr = core::ptr::addr_of_mut!(SPI_DEVICE);
+        (*spi_ptr).as_mut().unwrap()
+    };
 
     debug!("RSS Version: {}", rss_version());
 
     let mut radar = Radar::new(1, spi_mut_ref.get_mut(), interrupt, enable, Delay).await;
     info!("Radar enabled.");
-    
+
     // Check sensor connectivity before calibration
     if !radar.is_connected() {
         defmt::panic!("Sensor is not connected or not responding");
     }
     info!("Sensor connectivity verified.");
-    
+
     // Check sensor status for debugging
     radar.check_status();
-    
+
     // Validate calibration before using it
     let mut calibration = loop {
         match radar.calibrate().await {
-            Ok(calibration) => {
-                match calibration.validate_calibration() {
-                    Ok(()) => {
-                        info!("Calibration complete and validated.");
-                        break calibration;
-                    }
-                    Err(_) => {
-                        warn!("Calibration invalid, retrying...");
-                        embassy_time::Timer::after(embassy_time::Duration::from_millis(100)).await;
-                    }
+            Ok(calibration) => match calibration.validate_calibration() {
+                Ok(()) => {
+                    info!("Calibration complete and validated.");
+                    break calibration;
                 }
-            }
+                Err(_) => {
+                    warn!("Calibration invalid, retrying...");
+                    embassy_time::Timer::after(embassy_time::Duration::from_millis(100)).await;
+                }
+            },
             Err(e) => {
                 warn!("Calibration failed: {:?}, retrying...", e);
                 embassy_time::Timer::after(embassy_time::Duration::from_millis(100)).await;
             }
         }
     };
-    
+
     radar.prepare_sensor(&mut calibration).unwrap();
 
     let mut dist_config = RadarDistanceConfig::balanced();

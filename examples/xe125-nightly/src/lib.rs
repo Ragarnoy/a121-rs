@@ -3,7 +3,7 @@
 extern crate alloc;
 
 use core::cell::RefCell;
-
+use core::ffi::c_void;
 use embassy_stm32::gpio::Output;
 use embassy_stm32::mode::Async;
 use embassy_stm32::rcc::{
@@ -27,14 +27,10 @@ static mut HEAP: [u8; HEAP_SIZE] = [0; HEAP_SIZE];
 pub static ALLOCATOR: Talck<spin::Mutex<()>, ClaimOnOom> = Talc::new(unsafe {
     // Initialize with the heap memory using proper slice conversion
     ClaimOnOom::new(Span::from_array(&raw mut HEAP))
-}).lock();
+})
+.lock();
 
-pub fn init_heap() {
-    // talc is initialized at compile time, no runtime initialization needed
-}
-
-pub type SpiDeviceMutex =
-    ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>;
+pub type SpiDeviceMutex = ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>;
 pub static mut SPI_DEVICE: Option<RefCell<SpiAdapter<SpiDeviceMutex>>> = None;
 
 pub fn xm125_spi_config() -> Config {
@@ -67,4 +63,115 @@ pub fn xm125_clock_config() -> embassy_stm32::Config {
     });
     config.rcc.ls = LsConfig::default_lsi();
     config
+}
+
+#[no_mangle]
+extern "C" fn malloc(size: usize) -> *mut c_void {
+    use alloc::alloc::GlobalAlloc;
+
+    if size == 0 {
+        return core::ptr::null_mut();
+    }
+
+    // Allocate extra space to store the size before the user data
+    let total_size = size + core::mem::size_of::<usize>();
+    let layout = core::alloc::Layout::from_size_align(total_size, 8)
+        .unwrap_or_else(|_| core::panic!("Invalid malloc size: {}", size));
+
+    unsafe {
+        let ptr = ALLOCATOR.alloc(layout);
+        if ptr.is_null() {
+            return core::ptr::null_mut();
+        }
+
+        // Store the user-requested size at the beginning
+        *(ptr as *mut usize) = size;
+
+        // Return pointer to user data (after the size)
+        (ptr as *mut usize).offset(1) as *mut c_void
+    }
+}
+
+#[no_mangle]
+extern "C" fn free(ptr: *mut c_void) {
+    use alloc::alloc::GlobalAlloc;
+
+    if ptr.is_null() {
+        return;
+    }
+
+    // We need to store the size somehow. A common approach is to store
+    // the size just before the allocated block
+    unsafe {
+        let size_ptr = (ptr as *mut usize).offset(-1);
+        let size = *size_ptr;
+
+        // Create the layout that was used for allocation
+        let layout = core::alloc::Layout::from_size_align_unchecked(
+            size + core::mem::size_of::<usize>(), // Include the size prefix
+            8,
+        );
+
+        // Deallocate using talc
+        ALLOCATOR.dealloc(size_ptr as *mut u8, layout);
+    }
+}
+
+// Override other C library memory functions for completeness
+#[no_mangle]
+extern "C" fn calloc(count: usize, size: usize) -> *mut c_void {
+    let total_size = count.wrapping_mul(size);
+    if total_size == 0 {
+        return core::ptr::null_mut();
+    }
+
+    let ptr = malloc(total_size);
+    if !ptr.is_null() {
+        unsafe {
+            core::ptr::write_bytes(ptr as *mut u8, 0, total_size);
+        }
+    }
+    ptr
+}
+
+#[no_mangle]
+extern "C" fn realloc(ptr: *mut c_void, size: usize) -> *mut c_void {
+    if ptr.is_null() {
+        return malloc(size);
+    }
+
+    if size == 0 {
+        free(ptr);
+        return core::ptr::null_mut();
+    }
+
+    // Get the old size from the stored metadata
+    let old_size = unsafe {
+        let size_ptr = (ptr as *mut usize).offset(-1);
+        *size_ptr
+    };
+
+    // Allocate new memory
+    let new_ptr = malloc(size);
+    if new_ptr.is_null() {
+        return core::ptr::null_mut();
+    }
+
+    // Copy old data to new memory (up to the smaller of old/new size)
+    let copy_size = core::cmp::min(old_size, size);
+    unsafe {
+        core::ptr::copy_nonoverlapping(ptr as *const u8, new_ptr as *mut u8, copy_size);
+    }
+
+    // Free the old memory
+    free(ptr);
+
+    new_ptr
+}
+
+// Stub _sbrk that signals no traditional heap available
+#[no_mangle]
+extern "C" fn _sbrk(_incr: isize) -> *mut c_void {
+    // Return error to force newlib to use our malloc instead
+    (-1isize) as *mut c_void
 }

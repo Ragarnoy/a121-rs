@@ -28,6 +28,7 @@ libm = { version = "0.2.15", default-features = false, optional = true }
 distance = ["a121-sys/distance"]
 presence = ["a121-sys/presence"]
 libm = ["dep:libm", "num/libm"]
+# Recommended if you don't want to have to link a huge chunk of newlib
 nightly-logger = ["defmt"]
 std = []
 defmt = ["dep:defmt"]
