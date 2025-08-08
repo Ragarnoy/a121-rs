@@ -66,11 +66,15 @@ where
     DLY: DelayNs,
 {
     /// Creates a new presence detector with default configuration.
-    /// 
+    ///
     /// # Panics
     /// Panics if the radar is not in Ready state.
     pub fn new(radar: &'radar mut Radar<SINT, ENABLE, DLY>) -> Self {
-        assert_eq!(radar.state(), RadarState::Ready, "Radar must be in Ready state");
+        assert_eq!(
+            radar.state(),
+            RadarState::Ready,
+            "Radar must be in Ready state"
+        );
         let config = PresenceConfig::default();
         let inner = InnerPresenceDetector::new(&config);
         Self {
@@ -81,14 +85,18 @@ where
     }
 
     /// Creates a new presence detector with the specified configuration.
-    /// 
+    ///
     /// # Panics
     /// Panics if the radar is not in Ready state.
     pub fn with_config(
         radar: &'radar mut Radar<SINT, ENABLE, DLY>,
         config: PresenceConfig,
     ) -> Self {
-        assert_eq!(radar.state(), RadarState::Ready, "Radar must be in Ready state");
+        assert_eq!(
+            radar.state(),
+            RadarState::Ready,
+            "Radar must be in Ready state"
+        );
         let inner = InnerPresenceDetector::new(&config);
         Self {
             radar,

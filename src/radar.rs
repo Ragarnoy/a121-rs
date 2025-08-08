@@ -57,21 +57,21 @@ where
         delay.delay_ms(50).await; // Longer off time
         enable_pin.set_high().unwrap();
         delay.delay_ms(50).await; // Longer startup time
-        
+
         // Create and register HAL before creating sensor
         let hal = AccHalImpl::new(spi);
         hal.register();
-        
+
         // Additional delay after HAL registration for sensor to stabilize
         delay.delay_ms(10).await;
-        
+
         // Create configuration first
         let config = RadarConfig::default();
-        
+
         // Create sensor after HAL is registered and sensor is stable
         let sensor = Sensor::new(id, enable_pin, delay).expect("Failed to create sensor");
         let processing = Processing::new(&config);
-        
+
         Radar {
             id,
             config,
@@ -90,9 +90,10 @@ where
         if self.state != RadarState::Enabled {
             return Err(SensorError::NotReady);
         }
-        
+
         let mut buf = [0u8; 2560];
-        self.sensor.prepare(&self.config, calibration_result, &mut buf)?;
+        self.sensor
+            .prepare(&self.config, calibration_result, &mut buf)?;
         self.state = RadarState::Ready;
         Ok(())
     }
@@ -101,7 +102,7 @@ where
         if self.state != RadarState::Hibernating {
             return Err(SensorError::NotReady);
         }
-        
+
         self.sensor.hibernate_off()?;
         self.state = RadarState::Ready;
         Ok(())
@@ -111,7 +112,7 @@ where
         if self.state != RadarState::Ready {
             return Err(SensorError::NotReady);
         }
-        
+
         self.sensor.measure(&mut self.interrupt).await?;
         self.sensor.read(data)?;
         Ok(())
@@ -121,7 +122,7 @@ where
         if self.state != RadarState::Ready {
             return Err(SensorError::NotReady);
         }
-        
+
         self.sensor.hibernate_on()?;
         self.state = RadarState::Hibernating;
         Ok(())
@@ -131,7 +132,7 @@ where
     pub fn state(&self) -> RadarState {
         self.state
     }
-    
+
     /// Get the radar sensor ID
     pub fn id(&self) -> u32 {
         self.id

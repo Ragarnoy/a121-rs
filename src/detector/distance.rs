@@ -61,11 +61,15 @@ where
     DLY: DelayNs,
 {
     /// Constructs a new radar distance detector with default configuration.
-    /// 
+    ///
     /// # Panics
     /// Panics if the radar is not in Ready state.
     pub fn new(radar: &'radar mut Radar<SINT, ENABLE, DLY>) -> Self {
-        assert_eq!(radar.state(), RadarState::Ready, "Radar must be in Ready state");
+        assert_eq!(
+            radar.state(),
+            RadarState::Ready,
+            "Radar must be in Ready state"
+        );
         let config = RadarDistanceConfig::default();
         let inner = InnerRadarDistanceDetector::new(&config);
         #[cfg(feature = "defmt")]
@@ -78,14 +82,18 @@ where
     }
 
     /// Constructs a new radar distance detector with the provided configuration.
-    /// 
+    ///
     /// # Panics
     /// Panics if the radar is not in Ready state.
     pub fn with_config(
         radar: &'radar mut Radar<SINT, ENABLE, DLY>,
         config: RadarDistanceConfig,
     ) -> Self {
-        assert_eq!(radar.state(), RadarState::Ready, "Radar must be in Ready state");
+        assert_eq!(
+            radar.state(),
+            RadarState::Ready,
+            "Radar must be in Ready state"
+        );
         let inner = InnerRadarDistanceDetector::new(&config);
         #[cfg(feature = "defmt")]
         defmt::trace!("{:?}", DistanceSizes::new(&inner));

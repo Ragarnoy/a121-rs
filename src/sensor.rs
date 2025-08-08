@@ -35,7 +35,10 @@ impl InnerSensor {
         // Runtime safety check for null pointer
         if sensor_ptr.is_null() {
             #[cfg(feature = "defmt")]
-            defmt::error!("Failed to create sensor {}: acc_sensor_create returned null", sensor_id);
+            defmt::error!(
+                "Failed to create sensor {}: acc_sensor_create returned null",
+                sensor_id
+            );
             return None;
         }
 
