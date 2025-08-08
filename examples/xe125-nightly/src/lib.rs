@@ -6,9 +6,7 @@ use core::cell::RefCell;
 use core::ffi::c_void;
 use embassy_stm32::gpio::Output;
 use embassy_stm32::mode::Async;
-use embassy_stm32::rcc::{
-    LsConfig, Pll, PllMul, PllPDiv, PllPreDiv, PllQDiv, PllRDiv, PllSource, Sysclk,
-};
+use embassy_stm32::rcc::{LsConfig, Pll, PllMul, PllPDiv, PllQDiv, PllRDiv, PllSource, Sysclk};
 use embassy_stm32::spi::{Config, Spi};
 use embassy_stm32::time::Hertz;
 use embassy_time::Delay;
@@ -117,10 +115,17 @@ extern "C" fn free(ptr: *mut c_void) {
     }
 }
 
-// Override other C library memory functions for completeness
+// Rust
 #[no_mangle]
 extern "C" fn calloc(count: usize, size: usize) -> *mut c_void {
-    let total_size = count.wrapping_mul(size);
+    // Detect overflow
+    let total_size = match count.checked_mul(size) {
+        Some(n) => n,
+        None => {
+            return core::ptr::null_mut();
+        }
+    };
+
     if total_size == 0 {
         return core::ptr::null_mut();
     }
