@@ -80,7 +80,7 @@ async fn init(_spawner: Spawner) {
     println!("Radar enabled.");
     println!("Starting calibration...");
     let mut calibration = radar.calibrate().await.unwrap();
-    let mut radar = radar.prepare_sensor(&mut calibration).unwrap();
+    radar.prepare_sensor(&mut calibration).unwrap();
     println!("Radar calibrated and prepared.");
     let mut distance = RadarDistanceDetector::new(&mut radar);
     let mut buffer = vec![0u8; distance.get_distance_buffer_size()];

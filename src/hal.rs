@@ -43,10 +43,6 @@ impl AccHalImpl {
     /// # Arguments
     ///
     /// * `spi` - A reference to an SPI device that implements the `SpiBus` trait.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the HAL registration fails.
     pub fn new<SPI>(spi: &'static mut SPI) -> Self
     where
         SPI: SpiDevice<u8, Error = SpiErrorKind> + Send + 'static,
@@ -117,16 +113,19 @@ impl AccHalImpl {
     ///
     /// This method should be called to register the HAL implementation, allowing the
     /// radar sensor to communicate using the provided SPI interface.
+    /// # Errors
     ///
-    /// # Panics
-    ///
-    /// Panics if the HAL registration fails.
+    /// Returns `SensorError::InitFailed` when the HAL registration fails.
     #[inline(always)]
-    pub fn register(&self) {
+    pub fn register(&self) -> Result<(), crate::sensor::error::SensorError> {
         #[cfg(feature = "defmt")]
         defmt::trace!("Registering HAL");
         let result = unsafe { acc_rss_hal_register(&self.inner) };
-        assert!(result, "Failed to register HAL");
+        if result {
+            Ok(())
+        } else {
+            Err(crate::sensor::error::SensorError::InitFailed)
+        }
     }
 }
 

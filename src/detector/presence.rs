@@ -3,7 +3,7 @@ pub mod results;
 
 use crate::detector::presence::config::PresenceConfig;
 use crate::detector::presence::results::{PresenceMetadata, PresenceResult, ProcessDataError};
-use crate::radar::{Radar, RadarReady};
+use crate::radar::{Radar, RadarState};
 use crate::sensor::calibration::CalibrationResult;
 use crate::sensor::error::SensorError;
 use a121_sys::*;
@@ -54,7 +54,7 @@ where
     ENABLE: OutputPin,
     DLY: DelayNs,
 {
-    pub radar: &'radar mut Radar<SINT, ENABLE, DLY, RadarReady>,
+    pub radar: &'radar mut Radar<SINT, ENABLE, DLY>,
     inner: InnerPresenceDetector,
     pub config: PresenceConfig,
 }
@@ -65,26 +65,36 @@ where
     ENABLE: OutputPin,
     DLY: DelayNs,
 {
-    pub fn new(radar: &'radar mut Radar<SINT, ENABLE, DLY, RadarReady>) -> Self {
+    /// Creates a new presence detector with default configuration.
+    /// Returns an error if the radar is not in Ready state.
+    pub fn new(radar: &'radar mut Radar<SINT, ENABLE, DLY>) -> Result<Self, SensorError> {
+        if radar.state() != RadarState::Ready {
+            return Err(SensorError::NotReady);
+        }
         let config = PresenceConfig::default();
         let inner = InnerPresenceDetector::new(&config);
-        Self {
+        Ok(Self {
             radar,
             inner,
             config,
-        }
+        })
     }
 
+    /// Creates a new presence detector with the specified configuration.
+    /// Returns an error if the radar is not in Ready state.
     pub fn with_config(
-        radar: &'radar mut Radar<SINT, ENABLE, DLY, RadarReady>,
+        radar: &'radar mut Radar<SINT, ENABLE, DLY>,
         config: PresenceConfig,
-    ) -> Self {
+    ) -> Result<Self, SensorError> {
+        if radar.state() != RadarState::Ready {
+            return Err(SensorError::NotReady);
+        }
         let inner = InnerPresenceDetector::new(&config);
-        Self {
+        Ok(Self {
             radar,
             inner,
             config,
-        }
+        })
     }
 
     pub fn presence_metadata(&self) -> &PresenceMetadata {
@@ -129,10 +139,10 @@ where
     }
 
     pub async fn detect_presence(
-        &mut self,
+        &'_ mut self,
         buffer: &mut [u8],
-    ) -> Result<PresenceResult, ProcessDataError> {
-        let mut result = PresenceResult::default();
+    ) -> Result<PresenceResult<'_>, ProcessDataError> {
+        let mut result = PresenceResult::new();
         let detection_success = unsafe {
             acc_detector_presence_process(
                 self.inner.inner_mut(),

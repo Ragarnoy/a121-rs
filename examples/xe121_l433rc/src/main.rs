@@ -96,7 +96,7 @@ async fn main(spawner: Spawner) {
         Timer::after(Duration::from_millis(1)).await;
     };
     info!("Calibration complete!");
-    let mut radar = radar.prepare_sensor(&mut calibration).unwrap();
+    radar.prepare_sensor(&mut calibration).unwrap();
     let mut distance = RadarDistanceDetector::new(&mut radar);
     let mut buffer = [0u8; 2560 * 3];
     let mut static_call_result = [0u8; 2560];

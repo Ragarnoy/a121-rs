@@ -1,4 +1,6 @@
 use crate::config::profile::RadarProfile;
+use crate::config::RadarConfig;
+use crate::processing::metadata::ProcessingMetaData;
 use crate::processing::ProcessingResult;
 use a121_sys::{
     acc_config_profile_t_ACC_CONFIG_PROFILE_5, acc_detector_presence_metadata_t,
@@ -17,7 +19,23 @@ pub struct PresenceResult<'r> {
     pub processing_result: ProcessingResult,
 }
 
-impl PresenceResult<'_> {
+impl<'r> PresenceResult<'r> {
+    /// Creates a new PresenceResult with proper radar config
+    pub fn new() -> Self {
+        let processing_result = ProcessingResult::new();
+
+        Self {
+            presence_detected: false,
+            intra_presence_score: 0.0,
+            inter_presence_score: 0.0,
+            presence_distance: 0.0,
+            depthwise_intra_presence_scores: &[],
+            depthwise_inter_presence_scores: &[],
+            depthwise_presence_scores_length: 0,
+            processing_result,
+        }
+    }
+
     /// Updates the presence result with data from the detector.
     /// This function should be called after `acc_detector_presence_process`.
     pub fn update_from_detector_result(&mut self, result: &acc_detector_presence_result_t) {
@@ -113,6 +131,23 @@ impl PresenceMetadata {
     }
 }
 
+impl PresenceMetadata {
+    /// Create a new PresenceMetadata with proper radar config and processing metadata
+    pub fn new(radar_config: &RadarConfig, processing_metadata: &mut ProcessingMetaData) -> Self {
+        Self {
+            inner: acc_detector_presence_metadata_t {
+                start_m: 0.0,
+                end_m: 6.0,
+                step_length_m: 0.0,
+                num_points: 0,
+                profile: acc_config_profile_t_ACC_CONFIG_PROFILE_5,
+                sensor_config: radar_config.ptr(),
+                processing_metadata: unsafe { processing_metadata.mut_ptr() },
+            },
+        }
+    }
+}
+
 impl Default for PresenceMetadata {
     fn default() -> Self {
         Self {
@@ -122,6 +157,8 @@ impl Default for PresenceMetadata {
                 step_length_m: 0.0,
                 num_points: 0,
                 profile: acc_config_profile_t_ACC_CONFIG_PROFILE_5,
+                sensor_config: core::ptr::null(),
+                processing_metadata: core::ptr::null_mut(),
             },
         }
     }

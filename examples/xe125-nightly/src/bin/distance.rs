@@ -6,10 +6,10 @@ extern crate alloc;
 use alloc::vec;
 use core::cell::RefCell;
 
-use defmt::{debug, info, trace, warn};
+use defmt::*;
 use embassy_executor::Spawner;
 use embassy_stm32::exti::ExtiInput;
-use embassy_stm32::gpio::{Input, Level, Output, Pull, Speed};
+use embassy_stm32::gpio::{Level, Output, Pull, Speed};
 use embassy_stm32::spi::Spi;
 use embassy_time::{Delay, Instant};
 use embedded_hal_bus::spi::ExclusiveDevice;
@@ -20,6 +20,7 @@ use a121_rs::radar::version::rss_version;
 use a121_rs::radar::Radar;
 use xe125_nightly::adapter::SpiAdapter;
 use xe125_nightly::*;
+use {defmt_rtt as _, panic_probe as _};
 
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
@@ -27,17 +28,16 @@ async fn main(_spawner: Spawner) {
 
     let enable = Output::new(p.PB12, Level::Low, Speed::VeryHigh); // ENABLE on PB12
     let cs_pin = Output::new(p.PB0, Level::High, Speed::VeryHigh);
-    let input = Input::new(p.PB3, Pull::Up);
-    let interrupt = ExtiInput::new(input, p.EXTI3); // INTERRUPT on PB3 used as 'ready' signal
+    let interrupt = ExtiInput::new(p.PB3, p.EXTI3, Pull::Up); // INTERRUPT on PB3 used as 'ready' signal
     info!("GPIO initialized.");
 
     let spi = Spi::new(
         p.SPI1,
-        p.PA5, // SCK
-        p.PA7, // MOSI
-        p.PA6, // MISO
-        p.DMA2_CH3,
-        p.DMA2_CH2,
+        p.PA5,      // SCK
+        p.PA7,      // MOSI
+        p.PA6,      // MISO
+        p.DMA2_CH4, // TX DMA for SPI1
+        p.DMA2_CH3, // RX DMA for SPI1
         xm125_spi_config(),
     );
     let exclusive_device = ExclusiveDevice::new(spi, cs_pin, Delay);
@@ -47,19 +47,52 @@ async fn main(_spawner: Spawner) {
             exclusive_device.expect("SPI device init failed!"),
         )))
     };
-    let spi_mut_ref = unsafe { SPI_DEVICE.as_mut().unwrap() };
+    let spi_mut_ref = unsafe {
+        let spi_ptr = core::ptr::addr_of_mut!(SPI_DEVICE);
+        (*spi_ptr).as_mut().unwrap()
+    };
 
     debug!("RSS Version: {}", rss_version());
 
-    let mut radar = Radar::new(1, spi_mut_ref.get_mut(), interrupt, enable, Delay).await;
+    let mut radar = Radar::new(1, spi_mut_ref.get_mut(), interrupt, enable, Delay)
+        .await
+        .unwrap();
     info!("Radar enabled.");
-    let mut calibration = radar.calibrate().await.unwrap();
-    info!("Calibration complete.");
-    let mut radar = radar.prepare_sensor(&mut calibration).unwrap();
+
+    // Check sensor connectivity before calibration
+    if !radar.is_connected() {
+        defmt::panic!("Sensor is not connected or not responding");
+    }
+    info!("Sensor connectivity verified.");
+
+    // Check sensor status for debugging
+    radar.check_status();
+
+    // Validate calibration before using it
+    let mut calibration = loop {
+        match radar.calibrate().await {
+            Ok(calibration) => match calibration.validate_calibration() {
+                Ok(()) => {
+                    info!("Calibration complete and validated.");
+                    break calibration;
+                }
+                Err(_) => {
+                    warn!("Calibration invalid, retrying...");
+                    embassy_time::Timer::after(embassy_time::Duration::from_millis(100)).await;
+                }
+            },
+            Err(e) => {
+                warn!("Calibration failed: {:?}, retrying...", e);
+                embassy_time::Timer::after(embassy_time::Duration::from_millis(100)).await;
+            }
+        }
+    };
+
+    radar.prepare_sensor(&mut calibration).unwrap();
 
     let mut dist_config = RadarDistanceConfig::balanced();
-    dist_config.set_interval(4.0..=5.5);
-    let mut distance = RadarDistanceDetector::with_config(&mut radar, dist_config);
+    dist_config.set_interval(0.7..=1.5);
+    let mut distance = RadarDistanceDetector::with_config(&mut radar, dist_config).unwrap();
     let mut buffer = vec![0u8; distance.get_distance_buffer_size()];
     let mut static_cal_result = vec![0u8; distance.get_static_result_buffer_size()];
     trace!("Calibrating detector...");

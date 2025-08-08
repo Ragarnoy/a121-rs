@@ -13,4 +13,5 @@ pub enum SensorError {
     ResultNotAvailable,
     ProcessingFailed,
     BufferTooSmall,
+    InitFailed,
 }
