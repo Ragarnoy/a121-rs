@@ -99,7 +99,7 @@ async fn main(_spawner: Spawner) {
     log::info!("Radar enabled.");
     log::info!("Starting calibration...");
     let mut calibration = radar.calibrate().await.unwrap();
-    let mut radar = radar.prepare_sensor(&mut calibration).unwrap();
+    radar.prepare_sensor(&mut calibration).unwrap();
     log::info!("Radar calibrated and prepared.");
 
     let mut distance_config = RadarDistanceConfig::default();
