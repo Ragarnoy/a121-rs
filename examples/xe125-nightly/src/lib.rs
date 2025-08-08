@@ -6,7 +6,9 @@ use core::cell::RefCell;
 use core::ffi::c_void;
 use embassy_stm32::gpio::Output;
 use embassy_stm32::mode::Async;
-use embassy_stm32::rcc::{LsConfig, Pll, PllMul, PllPDiv, PllQDiv, PllRDiv, PllSource, Sysclk};
+use embassy_stm32::rcc::{
+    LsConfig, Pll, PllMul, PllPDiv, PllPreDiv, PllQDiv, PllRDiv, PllSource, Sysclk,
+};
 use embassy_stm32::spi::{Config, Spi};
 use embassy_stm32::time::Hertz;
 use embassy_time::Delay;
