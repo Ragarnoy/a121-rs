@@ -3,8 +3,8 @@
 #![feature(type_alias_impl_trait)]
 
 extern crate alloc;
+extern crate tinyrlibc;
 
-use alloc::vec;
 use core::mem::MaybeUninit;
 use embassy_executor::Spawner;
 use embassy_time::{Delay, Instant};
@@ -25,7 +25,7 @@ use a121_rs::config::profile::RadarProfile::AccProfile5;
 use a121_rs::detector::distance::{config::*, RadarDistanceDetector};
 use a121_rs::radar::Radar;
 
-extern crate tinyrlibc; // this provides malloc and free via the global allocator
+// this provides malloc and free via the global allocator
 
 #[global_allocator]
 static ALLOCATOR: esp_alloc::EspHeap = esp_alloc::EspHeap::empty();
@@ -94,7 +94,9 @@ async fn main(_spawner: Spawner) {
     let spi_device = spi_adapter::SpiAdapter::new(spi_device);
     let spi_device = static_cell::make_static!(spi_device);
 
-    let mut radar = Radar::new(1, spi_device, radar_int, radar_en, Delay).await;
+    let mut radar = Radar::new(1, spi_device, radar_int, radar_en, Delay)
+        .await
+        .unwrap();
 
     log::info!("Radar enabled.");
     log::info!("Starting calibration...");

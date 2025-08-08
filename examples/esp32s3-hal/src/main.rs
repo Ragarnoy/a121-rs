@@ -3,6 +3,7 @@
 #![feature(type_alias_impl_trait)]
 
 extern crate alloc;
+extern crate tinyrlibc;
 
 use a121_rs::detector::distance::RadarDistanceDetector;
 use a121_rs::radar::Radar;
@@ -23,8 +24,6 @@ use esp_hal::{
 };
 use esp_println::println;
 mod spi_adapter;
-
-extern crate tinyrlibc;
 
 static COUNT: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
 defmt::timestamp!(
@@ -76,7 +75,9 @@ async fn init(_spawner: Spawner) {
 
     //gpio_r_en.set_high().unwrap();
     //Timer::after(Duration::from_millis(5)).await;
-    let mut radar = Radar::new(1, spi_device, gpio_r_int, gpio_r_en, Delay).await;
+    let mut radar = Radar::new(1, spi_device, gpio_r_int, gpio_r_en, Delay)
+        .await
+        .unwrap();
     println!("Radar enabled.");
     println!("Starting calibration...");
     let mut calibration = radar.calibrate().await.unwrap();

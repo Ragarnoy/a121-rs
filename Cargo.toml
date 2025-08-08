@@ -9,7 +9,7 @@ categories = ["embedded", "no-std"]
 readme = "README.md"
 license = "MIT"
 edition = "2021"
-version = "0.1.4"
+version = "0.1.5"
 rust-version = "1.82"
 
 [dependencies]
