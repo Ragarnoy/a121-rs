@@ -11,9 +11,14 @@ use a121_sys::{
 #[derive(Debug, Copy, Clone)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum ProcessDataError {
+    /// Calibration is needed before processing
     CalibrationNeeded,
+    /// The processing failed
     ProcessingFailed,
+    /// The result is not available
     Unavailable,
+    /// One or more buffers are too small
+    BufferTooSmall,
 }
 
 /// Represents a single detected distance and its strength.

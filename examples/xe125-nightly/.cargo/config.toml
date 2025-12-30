@@ -1,5 +1,5 @@
 [target.'cfg(all(target_arch = "arm", target_os = "none"))']
-runner = "probe-rs run --chip STM32L431CBYx --connect-under-reset"
+runner = "probe-rs run --chip STM32L431CBYx"
 
 [target.thumbv7em-none-eabihf]
 linker = "arm-none-eabi-gcc"
@@ -21,5 +21,5 @@ target = "thumbv7em-none-eabihf"
 
 [env]
 DEFMT_LOG = "trace"
-ACC_RSS_LIBS={ value = "acc", relative = true }
+ACC_RSS_LIBS={ value = "/usr/lib/acconeer", relative = false }
 CPATH="/usr/lib/arm-none-eabi/include:/usr/arm-none-eabi/include"
