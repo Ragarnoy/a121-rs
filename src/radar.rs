@@ -66,6 +66,11 @@ where
     ENABLE: OutputPin,
     DLY: DelayNs,
 {
+    const _SCRATCH_SIZE_CHECK: () = assert!(
+        SCRATCH_SIZE >= PREPARE_BUFFER_SIZE,
+        "SCRATCH_SIZE must be >= PREPARE_BUFFER_SIZE (2560)"
+    );
+
     pub async fn new<SPI>(
         id: u32,
         spi: &'static mut SPI,

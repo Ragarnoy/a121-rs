@@ -12,9 +12,11 @@ use crate::processing::ProcessingResult;
 
 /// Represents the results from a presence detection operation.
 ///
-/// The lifetime `'detector` ties this result to the detector that produced it,
-/// ensuring the depthwise score pointers remain valid.
-pub struct PresenceResult<'detector> {
+/// The lifetime `'buf` ties this result to the buffer passed to `detect_presence`,
+/// ensuring the depthwise score pointers remain valid. The pointers point directly
+/// into the processing buffer, so the buffer must not be modified while this
+/// result is alive.
+pub struct PresenceResult<'buf> {
     /// Whether presence was detected
     pub presence_detected: bool,
     /// Intra-frame presence score (fast movements)
@@ -25,15 +27,15 @@ pub struct PresenceResult<'detector> {
     pub presence_distance: f32,
     /// Processing result from the radar
     pub processing_result: ProcessingResult,
-    // Internal: raw pointers to depthwise scores (owned by detector)
+    // Internal: raw pointers to depthwise scores (point into the processing buffer)
     depthwise_intra_ptr: *const f32,
     depthwise_inter_ptr: *const f32,
     depthwise_len: usize,
-    // Ties lifetime to detector
-    _marker: PhantomData<&'detector ()>,
+    // Ties lifetime to the buffer, not the detector
+    _marker: PhantomData<&'buf [u8]>,
 }
 
-impl<'detector> PresenceResult<'detector> {
+impl<'buf> PresenceResult<'buf> {
     /// Creates a new empty PresenceResult
     pub fn new() -> Self {
         Self {
@@ -56,7 +58,8 @@ impl<'detector> PresenceResult<'detector> {
         if self.depthwise_intra_ptr.is_null() || self.depthwise_len == 0 {
             &[]
         } else {
-            // SAFETY: Pointer validity is tied to detector lifetime via PhantomData
+            // SAFETY: Pointer points into the buffer whose lifetime is captured by 'buf.
+            // The PhantomData<&'buf [u8]> ensures the buffer outlives this result.
             unsafe { core::slice::from_raw_parts(self.depthwise_intra_ptr, self.depthwise_len) }
         }
     }
@@ -68,7 +71,8 @@ impl<'detector> PresenceResult<'detector> {
         if self.depthwise_inter_ptr.is_null() || self.depthwise_len == 0 {
             &[]
         } else {
-            // SAFETY: Pointer validity is tied to detector lifetime via PhantomData
+            // SAFETY: Pointer points into the buffer whose lifetime is captured by 'buf.
+            // The PhantomData<&'buf [u8]> ensures the buffer outlives this result.
             unsafe { core::slice::from_raw_parts(self.depthwise_inter_ptr, self.depthwise_len) }
         }
     }
@@ -79,7 +83,17 @@ impl<'detector> PresenceResult<'detector> {
     }
 
     /// Updates the presence result with data from the detector.
-    pub(super) fn update_from_detector_result(&mut self, result: &acc_detector_presence_result_t) {
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that `result`'s depthwise pointers point into memory
+    /// that will remain valid for the `'buf` lifetime. This is guaranteed when
+    /// the result comes from `acc_detector_presence_process` called with a buffer
+    /// whose lifetime is `'buf`.
+    pub(super) unsafe fn update_from_detector_result(
+        &mut self,
+        result: &acc_detector_presence_result_t,
+    ) {
         self.presence_detected = result.presence_detected;
         self.intra_presence_score = result.intra_presence_score;
         self.inter_presence_score = result.inter_presence_score;

@@ -331,10 +331,10 @@ pub const fn calc_distance_total(
 /// ```
 pub const fn calc_distance_static_cal_size(num_points: u16) -> usize {
     let calculated = num_points as usize * SIZE_OF_FLOAT * 2;
-    if calculated > 2048 {
+    if calculated > DISTANCE_MIN_STATIC_CAL_SIZE {
         calculated
     } else {
-        2048
+        DISTANCE_MIN_STATIC_CAL_SIZE
     }
 }
 
@@ -454,17 +454,18 @@ impl<'a> SessionMemoryCalculator<'a> {
         buffer_size.max(CALIB_BUFFER) + OVERHEAD
     }
 
-    /// Calculates RSS heap memory for a sweep operation
+    /// Calculates RSS heap memory for a sweep operation.
+    ///
+    /// This includes all RSS heap components: per-config, per-subsweep, and per-sensor overhead.
+    /// Consistent with compile-time `calc_session_rss_heap()`.
     pub fn rss_heap(&self) -> usize {
         let num_subsweeps = self.config.num_subsweep() as usize;
-        RSS_HEAP_PER_CONFIG + num_subsweeps * RSS_HEAP_PER_SUBSWEEP
+        RSS_HEAP_PER_CONFIG + num_subsweeps * RSS_HEAP_PER_SUBSWEEP + RSS_HEAP_PER_SENSOR
     }
 
     /// Calculates total memory requirements
     pub fn memory_requirements(&self) -> MemoryRequirements {
-        let external = self.external_heap();
-        let rss = self.rss_heap() + RSS_HEAP_PER_SENSOR;
-        MemoryRequirements::new(external, rss)
+        MemoryRequirements::new(self.external_heap(), self.rss_heap())
     }
 }
 
@@ -512,7 +513,7 @@ impl<'a> PresenceMemoryCalculator<'a> {
         let num_points = self.total_num_points();
         let presence_rss = num_points * PRESENCE_FILTER_PARAMS * SIZE_OF_FLOAT;
 
-        PRESENCE_HEAP_OVERHEAD + presence_rss + RSS_HEAP_PER_SENSOR + sweep_rss
+        PRESENCE_HEAP_OVERHEAD + presence_rss + sweep_rss
     }
 
     /// Calculates total memory requirements for presence detection
@@ -599,7 +600,7 @@ impl<'a> DistanceMemoryCalculator<'a> {
         // Conservative estimate: assume 2 processors
         let processor_heap = DISTANCE_HEAP_PER_PROCESSOR * 2;
 
-        DISTANCE_HEAP_OVERHEAD + processor_heap + RSS_HEAP_PER_SENSOR + sweep_rss
+        DISTANCE_HEAP_OVERHEAD + processor_heap + sweep_rss
     }
 
     /// Calculates total memory requirements for distance detection

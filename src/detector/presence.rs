@@ -202,15 +202,19 @@ where
 
     /// Detects presence with automatic buffer size validation.
     ///
+    /// The returned `PresenceResult` borrows from `buffer` - the depthwise score
+    /// pointers point directly into the buffer memory. The buffer must not be
+    /// modified or reused while the result is alive.
+    ///
     /// For the unchecked version, see [`detect_presence_unchecked`](Self::detect_presence_unchecked).
     ///
     /// # Errors
     ///
     /// Returns [`ProcessDataError::BufferTooSmall`] if buffer is too small.
-    pub async fn detect_presence(
-        &'_ mut self,
-        buffer: &mut [u8],
-    ) -> Result<PresenceResult<'_>, ProcessDataError> {
+    pub async fn detect_presence<'buf>(
+        &mut self,
+        buffer: &'buf mut [u8],
+    ) -> Result<PresenceResult<'buf>, ProcessDataError> {
         let buffer_size = self.get_buffer_size();
 
         // Automatic buffer size validation
@@ -218,18 +222,23 @@ where
             return Err(ProcessDataError::BufferTooSmall);
         }
 
+        // SAFETY: Buffer size validated above
         unsafe { self.detect_presence_unchecked(buffer).await }
     }
 
     /// Detects presence without buffer size checks.
     ///
+    /// The returned `PresenceResult` borrows from `buffer` - the depthwise score
+    /// pointers point directly into the buffer memory. The buffer must not be
+    /// modified or reused while the result is alive.
+    ///
     /// # Safety
     ///
     /// The caller must ensure `buffer.len() >= self.get_buffer_size()`.
-    pub async unsafe fn detect_presence_unchecked(
-        &'_ mut self,
-        buffer: &mut [u8],
-    ) -> Result<PresenceResult<'_>, ProcessDataError> {
+    pub async unsafe fn detect_presence_unchecked<'buf>(
+        &mut self,
+        buffer: &'buf mut [u8],
+    ) -> Result<PresenceResult<'buf>, ProcessDataError> {
         use core::mem::MaybeUninit;
 
         let mut ffi_result = MaybeUninit::<acc_detector_presence_result_t>::uninit();
@@ -241,6 +250,8 @@ where
 
         if detection_success {
             let mut result = PresenceResult::new();
+            // SAFETY: The buffer lifetime 'buf is captured by PresenceResult via PhantomData.
+            // The ffi_result's pointers point into buffer, which has lifetime 'buf.
             result.update_from_detector_result(&ffi_result.assume_init());
             Ok(result)
         } else {
