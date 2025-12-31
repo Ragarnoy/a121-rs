@@ -62,7 +62,7 @@ impl From<PulseRepetitionFrequency> for u32 {
 
 impl PulseRepetitionFrequency {
     /// Returns the PRF value in Hz.
-    pub fn value(&self) -> u32 {
+    pub const fn value(&self) -> u32 {
         match self {
             PulseRepetitionFrequency::Prf19_5Mhz => 19_500_000,
             PulseRepetitionFrequency::Prf15_6Mhz => 15_600_000,
@@ -74,7 +74,7 @@ impl PulseRepetitionFrequency {
     }
 
     /// Returns the maximum measurable distance in meters.
-    pub fn max_measurable_distance(&self) -> f32 {
+    pub const fn max_measurable_distance(&self) -> f32 {
         match self {
             PulseRepetitionFrequency::Prf19_5Mhz => 3.1,
             PulseRepetitionFrequency::Prf15_6Mhz => 5.1,
@@ -82,6 +82,19 @@ impl PulseRepetitionFrequency {
             PulseRepetitionFrequency::Prf8_7Mhz => 12.7,
             PulseRepetitionFrequency::Prf6_5Mhz => 18.5,
             PulseRepetitionFrequency::Prf5_2Mhz => 24.3,
+        }
+    }
+
+    /// Converts from FFI value, returning `None` for invalid values.
+    pub const fn from_ffi(value: u32) -> Option<Self> {
+        match value {
+            0 => Some(PulseRepetitionFrequency::Prf19_5Mhz),
+            1 => Some(PulseRepetitionFrequency::Prf15_6Mhz),
+            2 => Some(PulseRepetitionFrequency::Prf13_0Mhz),
+            3 => Some(PulseRepetitionFrequency::Prf8_7Mhz),
+            4 => Some(PulseRepetitionFrequency::Prf6_5Mhz),
+            5 => Some(PulseRepetitionFrequency::Prf5_2Mhz),
+            _ => None,
         }
     }
 }

@@ -1,108 +1,114 @@
-use crate::config::profile::RadarProfile;
-use crate::config::RadarConfig;
-use crate::processing::metadata::ProcessingMetaData;
-use crate::processing::ProcessingResult;
+use core::marker::PhantomData;
+
 use a121_sys::{
     acc_config_profile_t_ACC_CONFIG_PROFILE_5, acc_detector_presence_metadata_t,
     acc_detector_presence_result_t,
 };
 
+use crate::config::profile::RadarProfile;
+use crate::config::RadarConfig;
+use crate::processing::metadata::ProcessingMetaData;
+use crate::processing::ProcessingResult;
+
 /// Represents the results from a presence detection operation.
-pub struct PresenceResult<'r> {
+///
+/// The lifetime `'buf` ties this result to the buffer passed to `detect_presence`,
+/// ensuring the depthwise score pointers remain valid. The pointers point directly
+/// into the processing buffer, so the buffer must not be modified while this
+/// result is alive.
+pub struct PresenceResult<'buf> {
+    /// Whether presence was detected
     pub presence_detected: bool,
+    /// Intra-frame presence score (fast movements)
     pub intra_presence_score: f32,
+    /// Inter-frame presence score (slow movements)
     pub inter_presence_score: f32,
+    /// Estimated distance to detected presence in meters
     pub presence_distance: f32,
-    pub depthwise_intra_presence_scores: &'r [f32],
-    pub depthwise_inter_presence_scores: &'r [f32],
-    pub depthwise_presence_scores_length: u32,
+    /// Processing result from the radar
     pub processing_result: ProcessingResult,
+    // Internal: raw pointers to depthwise scores (point into the processing buffer)
+    depthwise_intra_ptr: *const f32,
+    depthwise_inter_ptr: *const f32,
+    depthwise_len: usize,
+    // Ties lifetime to the buffer, not the detector
+    _marker: PhantomData<&'buf [u8]>,
 }
 
-impl<'r> PresenceResult<'r> {
-    /// Creates a new PresenceResult with proper radar config
+impl<'buf> PresenceResult<'buf> {
+    /// Creates a new empty PresenceResult
     pub fn new() -> Self {
-        let processing_result = ProcessingResult::new();
-
         Self {
             presence_detected: false,
             intra_presence_score: 0.0,
             inter_presence_score: 0.0,
             presence_distance: 0.0,
-            depthwise_intra_presence_scores: &[],
-            depthwise_inter_presence_scores: &[],
-            depthwise_presence_scores_length: 0,
-            processing_result,
+            processing_result: ProcessingResult::new(),
+            depthwise_intra_ptr: core::ptr::null(),
+            depthwise_inter_ptr: core::ptr::null(),
+            depthwise_len: 0,
+            _marker: PhantomData,
         }
     }
 
+    /// Returns the depthwise intra-frame presence scores.
+    ///
+    /// These scores indicate fast movement detection at each depth point.
+    pub fn depthwise_intra_presence_scores(&self) -> &[f32] {
+        if self.depthwise_intra_ptr.is_null() || self.depthwise_len == 0 {
+            &[]
+        } else {
+            // SAFETY: Pointer points into the buffer whose lifetime is captured by 'buf.
+            // The PhantomData<&'buf [u8]> ensures the buffer outlives this result.
+            unsafe { core::slice::from_raw_parts(self.depthwise_intra_ptr, self.depthwise_len) }
+        }
+    }
+
+    /// Returns the depthwise inter-frame presence scores.
+    ///
+    /// These scores indicate slow movement detection at each depth point.
+    pub fn depthwise_inter_presence_scores(&self) -> &[f32] {
+        if self.depthwise_inter_ptr.is_null() || self.depthwise_len == 0 {
+            &[]
+        } else {
+            // SAFETY: Pointer points into the buffer whose lifetime is captured by 'buf.
+            // The PhantomData<&'buf [u8]> ensures the buffer outlives this result.
+            unsafe { core::slice::from_raw_parts(self.depthwise_inter_ptr, self.depthwise_len) }
+        }
+    }
+
+    /// Returns the number of depthwise score points
+    pub fn depthwise_scores_length(&self) -> usize {
+        self.depthwise_len
+    }
+
     /// Updates the presence result with data from the detector.
-    /// This function should be called after `acc_detector_presence_process`.
-    pub fn update_from_detector_result(&mut self, result: &acc_detector_presence_result_t) {
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that `result`'s depthwise pointers point into memory
+    /// that will remain valid for the `'buf` lifetime. This is guaranteed when
+    /// the result comes from `acc_detector_presence_process` called with a buffer
+    /// whose lifetime is `'buf`.
+    pub(super) unsafe fn update_from_detector_result(
+        &mut self,
+        result: &acc_detector_presence_result_t,
+    ) {
         self.presence_detected = result.presence_detected;
         self.intra_presence_score = result.intra_presence_score;
         self.inter_presence_score = result.inter_presence_score;
         self.presence_distance = result.presence_distance;
-
-        // Assuming buffer contains depthwise scores after calling acc_detector_presence_process
-        // and the lengths are correctly populated.
-        self.depthwise_presence_scores_length = result.depthwise_presence_scores_length;
-        self.depthwise_intra_presence_scores = unsafe {
-            core::slice::from_raw_parts(
-                result.depthwise_intra_presence_scores as *const f32,
-                result.depthwise_presence_scores_length as usize,
-            )
-        };
-        self.depthwise_inter_presence_scores = unsafe {
-            core::slice::from_raw_parts(
-                result.depthwise_inter_presence_scores as *const f32,
-                result.depthwise_presence_scores_length as usize,
-            )
-        };
-
-        // Processing result is directly assigned for simplicity, might require processing based on use-case
+        self.depthwise_len = result.depthwise_presence_scores_length as usize;
+        self.depthwise_intra_ptr = result.depthwise_intra_presence_scores;
+        self.depthwise_inter_ptr = result.depthwise_inter_presence_scores;
         self.processing_result = ProcessingResult::from(result.processing_result);
-    }
-
-    pub(super) fn inner(&mut self) -> acc_detector_presence_result_t {
-        let processing_result = self.processing_result.clone();
-        acc_detector_presence_result_t {
-            presence_detected: self.presence_detected,
-            intra_presence_score: self.intra_presence_score,
-            inter_presence_score: self.inter_presence_score,
-            presence_distance: self.presence_distance,
-            depthwise_intra_presence_scores: self.depthwise_intra_presence_scores.as_ptr()
-                as *mut _,
-            depthwise_inter_presence_scores: self.depthwise_inter_presence_scores.as_ptr()
-                as *mut _,
-            depthwise_presence_scores_length: self.depthwise_presence_scores_length,
-            processing_result: processing_result.into(),
-        }
     }
 }
 
 impl Default for PresenceResult<'_> {
     fn default() -> Self {
-        Self {
-            presence_detected: false,
-            intra_presence_score: 0.0,
-            inter_presence_score: 0.0,
-            presence_distance: 0.0,
-            depthwise_intra_presence_scores: &[],
-            depthwise_inter_presence_scores: &[],
-            depthwise_presence_scores_length: 0,
-            processing_result: ProcessingResult::default(),
-        }
+        Self::new()
     }
-}
-
-/// Enumerates possible errors that can occur during the processing of radar data for presence detection.
-#[derive(Debug, Copy, Clone)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub enum ProcessDataError {
-    CalibrationNeeded,
-    ProcessingFailed,
-    Unavailable,
 }
 
 pub struct PresenceMetadata {

@@ -1,20 +1,10 @@
 use crate::config::RadarConfig;
 use crate::detector::distance::InnerRadarDistanceDetector;
-use crate::processing::metadata::ProcessingMetaData;
 use crate::processing::ProcessingResult;
 use a121_sys::{
     acc_detector_cal_result_dynamic_t, acc_detector_distance_get_sizes,
     acc_detector_distance_result_t, ACC_DETECTOR_DISTANCE_RESULT_MAX_NUM_DISTANCES,
 };
-
-/// Enumerates possible errors that can occur during the processing of radar data.
-#[derive(Debug, Copy, Clone)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub enum ProcessDataError {
-    CalibrationNeeded,
-    ProcessingFailed,
-    Unavailable,
-}
 
 /// Represents a single detected distance and its strength.
 #[derive(Debug, Default, Copy, Clone)]
@@ -29,35 +19,34 @@ pub struct Distance {
 /// This struct contains the distances detected by the radar, along with metadata
 /// such as the temperature during the detection and whether calibration is needed.
 pub struct DistanceResult<'a> {
-    result: ProcessingResult,
-    metadata: ProcessingMetaData,
     radar_config: &'a RadarConfig,
     distances: [Distance; ACC_DETECTOR_DISTANCE_RESULT_MAX_NUM_DISTANCES as usize],
     num_distances: u8,
     near_start_edge_status: bool,
-    calibration_needed: bool,
-    temperature: i16,
+    /// Processing result with status flags and temperature
+    processing_result: ProcessingResult,
 }
 
 impl<'a> DistanceResult<'a> {
     /// Creates a new instance of `DistanceResult`.
     pub fn new(config: &'a RadarConfig) -> Self {
-        let proc_result = ProcessingResult::new();
-        let proc_metadata = ProcessingMetaData::new();
         Self {
-            result: proc_result,
-            metadata: proc_metadata,
             radar_config: config,
             distances: [Distance::default();
                 ACC_DETECTOR_DISTANCE_RESULT_MAX_NUM_DISTANCES as usize],
             num_distances: 0,
             near_start_edge_status: false,
-            calibration_needed: false,
-            temperature: 0,
+            processing_result: ProcessingResult::new(),
         }
     }
 
-    pub(super) fn inner(&mut self) -> acc_detector_distance_result_t {
+    /// Creates the FFI struct for passing to the SDK.
+    ///
+    /// Note: The `processing_result`, `processing_metadata`, and `sensor_config`
+    /// pointers in the returned struct are set to null. The SDK will write
+    /// pointers into the buffer for these fields, but we extract only the
+    /// value fields in `update_from_detector_result`.
+    pub(super) fn inner(&self) -> acc_detector_distance_result_t {
         acc_detector_distance_result_t {
             distances: [0.0; ACC_DETECTOR_DISTANCE_RESULT_MAX_NUM_DISTANCES as usize],
             strengths: [0.0; ACC_DETECTOR_DISTANCE_RESULT_MAX_NUM_DISTANCES as usize],
@@ -65,12 +54,15 @@ impl<'a> DistanceResult<'a> {
             near_start_edge_status: false,
             calibration_needed: false,
             temperature: 0,
-            processing_result: unsafe { self.result.mut_ptr() },
-            processing_metadata: unsafe { self.metadata.mut_ptr() },
+            // These pointers will be written by the SDK (pointing into buffer)
+            // We don't need to provide storage - just pass the config pointer
+            processing_result: core::ptr::null_mut(),
+            processing_metadata: core::ptr::null_mut(),
             sensor_config: self.radar_config.ptr(),
         }
     }
 
+    /// Updates the result from the FFI struct returned by the SDK.
     pub(super) fn update_from_detector_result(&mut self, inner: acc_detector_distance_result_t) {
         self.num_distances = inner.num_distances;
         for i in 0..inner.num_distances as usize {
@@ -78,8 +70,19 @@ impl<'a> DistanceResult<'a> {
             self.distances[i].strength = inner.strengths[i];
         }
         self.near_start_edge_status = inner.near_start_edge_status;
-        self.calibration_needed = inner.calibration_needed;
-        self.temperature = inner.temperature;
+
+        // Extract only value fields from processing_result (the frame pointer is dangling)
+        if !inner.processing_result.is_null() {
+            self.processing_result = ProcessingResult::from(unsafe { *inner.processing_result });
+        } else {
+            // If no processing result, use values from the outer struct
+            self.processing_result = ProcessingResult {
+                data_saturated: false,
+                frame_delayed: false,
+                calibration_needed: inner.calibration_needed,
+                temperature: inner.temperature,
+            };
+        }
     }
 
     /// Returns the detected distances.
@@ -94,12 +97,12 @@ impl<'a> DistanceResult<'a> {
 
     /// Returns whether calibration is needed.
     pub fn calibration_needed(&self) -> bool {
-        self.calibration_needed
+        self.processing_result.calibration_needed
     }
 
     /// Returns the temperature during the detection.
     pub fn temperature(&self) -> i16 {
-        self.temperature
+        self.processing_result.temperature
     }
 
     /// Returns the number of detected distances.
@@ -107,14 +110,9 @@ impl<'a> DistanceResult<'a> {
         self.num_distances
     }
 
-    /// Returns the processing result.
+    /// Returns the processing result containing status flags and temperature.
     pub fn processing_result(&self) -> &ProcessingResult {
-        &self.result
-    }
-
-    /// Returns the processing metadata.
-    pub fn processing_metadata(&self) -> &ProcessingMetaData {
-        &self.metadata
+        &self.processing_result
     }
 }
 
@@ -147,19 +145,22 @@ pub(super) struct DistanceSizes {
 
 impl DistanceSizes {
     pub(super) fn new(handle: &InnerRadarDistanceDetector) -> Self {
-        let mut buffer_size: u32 = 0;
-        let mut detector_cal_result_static_size: u32 = 0;
+        use core::mem::MaybeUninit;
+
+        let mut buffer_size = MaybeUninit::<u32>::uninit();
+        let mut detector_cal_result_static_size = MaybeUninit::<u32>::uninit();
 
         unsafe {
             acc_detector_distance_get_sizes(
                 handle.inner(),
-                &mut buffer_size as *mut u32,
-                &mut detector_cal_result_static_size as *mut u32,
+                buffer_size.as_mut_ptr(),
+                detector_cal_result_static_size.as_mut_ptr(),
             );
-        }
-        Self {
-            buffer_size: buffer_size as usize,
-            detector_cal_result_static_size: detector_cal_result_static_size as usize,
+            Self {
+                buffer_size: buffer_size.assume_init() as usize,
+                detector_cal_result_static_size: detector_cal_result_static_size.assume_init()
+                    as usize,
+            }
         }
     }
 }

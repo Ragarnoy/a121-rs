@@ -1,9 +1,9 @@
 use core::ffi::c_void;
-
 use core::ops::{Deref, DerefMut};
+use core::ptr::NonNull;
+
 use embedded_hal::digital::OutputPin;
 use embedded_hal_async::delay::DelayNs;
-
 use embedded_hal_async::digital::Wait;
 
 use calibration::CalibrationResult;
@@ -17,67 +17,56 @@ pub mod error;
 
 /// Safety-critical wrapper around raw sensor pointer
 pub struct InnerSensor {
-    /// Raw pointer to acc_sensor_t. Must never be null once initialized.
-    /// Managed exclusively by this type to maintain memory safety.
-    inner: *mut acc_sensor_t,
+    /// Non-null pointer to acc_sensor_t, guaranteed valid by construction.
+    inner: NonNull<acc_sensor_t>,
 }
 
 impl InnerSensor {
     /// Creates a new sensor instance from a sensor ID.
     ///
     /// # Safety
-    /// - The returned pointer must be valid and non-null
     /// - The sensor must be powered on before calling this function
     /// - The sensor must not be used in another sensor instance without a power/reset cycle
     pub fn new(sensor_id: u32) -> Option<Self> {
         let sensor_ptr = unsafe { acc_sensor_create(sensor_id as acc_sensor_id_t) };
 
-        // Runtime safety check for null pointer
-        if sensor_ptr.is_null() {
-            #[cfg(feature = "defmt")]
-            defmt::error!(
-                "Failed to create sensor {}: acc_sensor_create returned null",
-                sensor_id
-            );
-            return None;
-        }
-
-        #[cfg(feature = "defmt")]
-        defmt::trace!("Successfully created sensor {}", sensor_id);
-        Some(Self { inner: sensor_ptr })
+        NonNull::new(sensor_ptr)
+            .map(|inner| {
+                #[cfg(feature = "defmt")]
+                defmt::trace!("Successfully created sensor {}", sensor_id);
+                Self { inner }
+            })
+            .or_else(|| {
+                #[cfg(feature = "defmt")]
+                defmt::error!(
+                    "Failed to create sensor {}: acc_sensor_create returned null",
+                    sensor_id
+                );
+                None
+            })
     }
 }
 
 impl Drop for InnerSensor {
     fn drop(&mut self) {
-        debug_assert!(!self.inner.is_null(), "Sensor pointer is null in drop");
-        unsafe {
-            acc_sensor_destroy(self.inner);
-        }
+        // NonNull guarantees non-null, no assertion needed
+        unsafe { acc_sensor_destroy(self.inner.as_ptr()) }
     }
 }
 
 impl Deref for InnerSensor {
     type Target = acc_sensor_t;
 
-    /// # Safety
-    /// Dereference is safe because:
-    /// - inner is guaranteed non-null by constructor
-    /// - exclusive access is maintained by Rust ownership rules
-    /// - pointer remains valid until drop
     fn deref(&self) -> &Self::Target {
-        unsafe { &*self.inner }
+        // SAFETY: NonNull guarantees valid pointer, exclusive access by ownership
+        unsafe { self.inner.as_ref() }
     }
 }
 
 impl DerefMut for InnerSensor {
-    /// # Safety
-    /// Dereference is safe because:
-    /// - inner is guaranteed non-null by constructor
-    /// - exclusive access is maintained by Rust ownership rules
-    /// - pointer remains valid until drop
     fn deref_mut(&mut self) -> &mut Self::Target {
-        unsafe { &mut *self.inner }
+        // SAFETY: NonNull guarantees valid pointer, exclusive access by &mut self
+        unsafe { self.inner.as_mut() }
     }
 }
 
@@ -325,15 +314,11 @@ where
     ///
     /// # Safety
     /// This function is unsafe because:
-    /// - The caller must ensure the sensor has been properly initialized
     /// - The pointer remains valid only for the lifetime of this Sensor instance
     /// - The caller must not use this pointer after the Sensor is dropped
     /// - Multiple mutable references to the same sensor must not be created
     pub unsafe fn inner(&self) -> *mut acc_sensor_t {
-        debug_assert!(
-            !self.inner.inner.is_null(),
-            "Sensor has not been initialized"
-        );
-        self.inner.inner
+        // NonNull guarantees non-null pointer
+        self.inner.inner.as_ptr()
     }
 }

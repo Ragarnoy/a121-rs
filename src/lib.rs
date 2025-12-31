@@ -52,6 +52,8 @@ pub mod hal;
 #[cfg(feature = "libm")]
 /// Math functions definitions from the libm crate
 pub mod libm;
+/// Memory calculation utilities for pre-allocating buffers
+pub mod memory;
 /// Number definitions for the radar sensor
 pub mod num;
 /// Processing modules for the radar sensor
