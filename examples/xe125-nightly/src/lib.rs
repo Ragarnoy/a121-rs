@@ -66,6 +66,10 @@ pub fn xm125_clock_config() -> embassy_stm32::Config {
     config
 }
 
+// C allocator shims - required for C SDK code that calls malloc directly.
+// Note: a121-rs itself uses Rust's GlobalAlloc (above), but the underlying
+// C SDK may still call malloc/free/calloc/realloc in its internal code.
+
 #[no_mangle]
 extern "C" fn malloc(size: usize) -> *mut c_void {
     use alloc::alloc::GlobalAlloc;

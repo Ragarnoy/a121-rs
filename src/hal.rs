@@ -129,27 +129,65 @@ impl AccHalImpl {
     }
 }
 
-extern "C" {
-    fn malloc(size: usize) -> *mut c_void;
-    fn free(ptr: *mut c_void);
-}
+use alloc::alloc::{alloc, dealloc, Layout};
 
 /// Allocates memory for use by the radar SDK.
+///
+/// Uses Rust's GlobalAlloc to avoid C malloc symbol conflicts.
+/// The size is stored before the returned pointer for use in deallocation.
 ///
 /// # Safety
 ///
 /// This function is unsafe as it performs raw pointer manipulation.
 unsafe extern "C" fn mem_alloc(size: usize) -> *mut c_void {
-    malloc(size)
+    if size == 0 {
+        return core::ptr::null_mut();
+    }
+
+    // Allocate extra space to store the size before the user data
+    let total = match size.checked_add(core::mem::size_of::<usize>()) {
+        Some(t) => t,
+        None => return core::ptr::null_mut(),
+    };
+
+    let layout = match Layout::from_size_align(total, 8) {
+        Ok(l) => l,
+        Err(_) => return core::ptr::null_mut(),
+    };
+
+    let ptr = alloc(layout);
+    if ptr.is_null() {
+        return core::ptr::null_mut();
+    }
+
+    // Store the size at the beginning
+    *(ptr as *mut usize) = size;
+
+    // Return pointer after the size metadata
+    ptr.add(core::mem::size_of::<usize>()) as *mut c_void
 }
 
-/// Frees memory previously allocated for the radar SDK.
+/// Frees memory previously allocated by mem_alloc.
+///
+/// Retrieves the size from before the pointer and deallocates the full block.
 ///
 /// # Safety
 ///
 /// This function is unsafe as it performs raw pointer manipulation.
+/// The pointer must have been allocated by mem_alloc.
 unsafe extern "C" fn mem_free(ptr: *mut c_void) {
-    free(ptr);
+    if ptr.is_null() {
+        return;
+    }
+
+    // Retrieve the size stored before the user data
+    let size_ptr = (ptr as *mut usize).sub(1);
+    let size = *size_ptr;
+
+    let total = size + core::mem::size_of::<usize>();
+    let layout = Layout::from_size_align_unchecked(total, 8);
+
+    dealloc(size_ptr as *mut u8, layout);
 }
 
 #[cfg(feature = "nightly-logger")]
