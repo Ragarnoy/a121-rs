@@ -13,6 +13,15 @@ use crate::sensor::calibration::CalibrationResult;
 use crate::sensor::error::SensorError;
 use crate::sensor::Sensor;
 
+/// Default scratch buffer size for radar operations (calibration + measurements).
+///
+/// This value is sufficient for most configurations. For larger configurations,
+/// use `Radar::with_scratch_size` or increase `SCRATCH_SIZE` const generic.
+pub const DEFAULT_SCRATCH_BUFFER_SIZE: usize = 5_560;
+
+/// Buffer size needed for sensor prepare operations.
+pub const PREPARE_BUFFER_SIZE: usize = 2_560;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum RadarState {
@@ -21,7 +30,21 @@ pub enum RadarState {
     Hibernating,
 }
 
-pub struct Radar<SINT, ENABLE, DLY>
+/// Radar sensor controller with configurable scratch buffer size.
+///
+/// The `SCRATCH_SIZE` const generic allows compile-time configuration of the
+/// internal scratch buffer. Use [`DEFAULT_SCRATCH_BUFFER_SIZE`] for most cases.
+///
+/// # Example
+///
+/// ```ignore
+/// // Use default buffer size
+/// let radar: Radar<_, _, _> = Radar::new(id, spi, interrupt, enable, delay).await?;
+///
+/// // Use custom buffer size for larger configurations
+/// let radar: Radar<_, _, _, 8192> = Radar::new(id, spi, interrupt, enable, delay).await?;
+/// ```
+pub struct Radar<SINT, ENABLE, DLY, const SCRATCH_SIZE: usize = DEFAULT_SCRATCH_BUFFER_SIZE>
 where
     SINT: Wait,
     ENABLE: OutputPin,
@@ -34,10 +57,10 @@ where
     pub(crate) interrupt: SINT,
     _hal: AccHalImpl,
     state: RadarState,
-    scratch: [u8; 5_560],
+    scratch: [u8; SCRATCH_SIZE],
 }
 
-impl<SINT, ENABLE, DLY> Radar<SINT, ENABLE, DLY>
+impl<SINT, ENABLE, DLY, const SCRATCH_SIZE: usize> Radar<SINT, ENABLE, DLY, SCRATCH_SIZE>
 where
     SINT: Wait,
     ENABLE: OutputPin,
@@ -49,7 +72,7 @@ where
         interrupt: SINT,
         mut enable_pin: ENABLE,
         mut delay: DLY,
-    ) -> Result<Radar<SINT, ENABLE, DLY>, SensorError>
+    ) -> Result<Radar<SINT, ENABLE, DLY, SCRATCH_SIZE>, SensorError>
     where
         SPI: SpiDevice<u8, Error = SpiErrorKind> + Send + 'static,
     {
@@ -67,7 +90,7 @@ where
         delay.delay_ms(10).await;
 
         // Create configuration first
-        let config = RadarConfig::default();
+        let config = RadarConfig::new()?;
 
         // Create sensor after HAL is registered and sensor is stable
         let sensor = Sensor::new(id, enable_pin, delay).ok_or(SensorError::InitFailed)?;
@@ -81,8 +104,13 @@ where
             processing,
             _hal: hal,
             state: RadarState::Enabled,
-            scratch: [0u8; 5_560],
+            scratch: [0u8; SCRATCH_SIZE],
         })
+    }
+
+    /// Returns the scratch buffer size for this radar instance.
+    pub const fn scratch_buffer_size(&self) -> usize {
+        SCRATCH_SIZE
     }
 
     pub fn prepare_sensor(
@@ -93,7 +121,7 @@ where
             return Err(SensorError::NotReady);
         }
 
-        let buf = &mut self.scratch[..2_560];
+        let buf = &mut self.scratch[..PREPARE_BUFFER_SIZE];
         self.sensor.prepare(&self.config, calibration_result, buf)?;
         self.state = RadarState::Ready;
         Ok(())

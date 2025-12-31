@@ -66,7 +66,6 @@
 //! );
 //! ```
 
-use crate::config::profile::RadarProfile;
 use crate::config::RadarConfig;
 
 // Constants from Acconeer A121 SDK memory model
@@ -80,9 +79,6 @@ const CALIB_BUFFER: usize = 2492;
 
 /// Bytes per measurement point
 const BYTES_PER_POINT: usize = 4;
-
-/// Maximum number of points supported
-const MAX_NUM_POINTS: usize = 4095;
 
 /// RSS heap memory per subsweep
 const RSS_HEAP_PER_SUBSWEEP: usize = 236;
@@ -104,6 +100,15 @@ const DISTANCE_HEAP_OVERHEAD: usize = 1028;
 
 /// Distance detector heap per processor
 const DISTANCE_HEAP_PER_PROCESSOR: usize = 224;
+
+/// Padding length for filtfilt filtering operations (distance detector)
+const FILTFILT_PAD_LEN: usize = 9;
+
+/// Number of filter parameters per point for presence detection
+const PRESENCE_FILTER_PARAMS: usize = 7;
+
+/// Minimum static calibration buffer size for distance detection
+const DISTANCE_MIN_STATIC_CAL_SIZE: usize = 2048;
 
 // ============================================================================
 // Compile-Time Memory Calculation Functions
@@ -212,7 +217,6 @@ pub const fn calc_presence_external_heap(
 /// ```
 pub const fn calc_presence_rss_heap(num_points: u16, num_subsweeps: u8) -> usize {
     let session_rss = RSS_HEAP_PER_CONFIG + (num_subsweeps as usize * RSS_HEAP_PER_SUBSWEEP);
-    const PRESENCE_FILTER_PARAMS: usize = 7;
     let presence_rss = num_points as usize * PRESENCE_FILTER_PARAMS * SIZE_OF_FLOAT;
     PRESENCE_HEAP_OVERHEAD + presence_rss + RSS_HEAP_PER_SENSOR + session_rss
 }
@@ -260,7 +264,6 @@ pub const fn calc_distance_external_heap(
     let session_ext = calc_session_external_heap(num_points, num_subsweeps, sweeps_per_frame);
 
     // Work buffer for filtering (with padding)
-    const FILTFILT_PAD_LEN: usize = 9;
     let work_buffer = (num_points as usize + 2 * FILTFILT_PAD_LEN) * 2 * SIZE_OF_FLOAT;
 
     // Calibration buffers (conservative estimate)
@@ -418,59 +421,6 @@ impl MemoryRequirements {
     }
 }
 
-/// Helper to calculate filter edge margin based on profile and step length
-///
-/// This matches the distance filter implementation in the Acconeer SDK
-fn get_distance_filter_edge_margin(profile: RadarProfile, step_length: u16) -> usize {
-    // Filter margin depends on profile characteristics
-    // These values are derived from the Acconeer SDK
-    match profile {
-        RadarProfile::AccProfile1 => {
-            if step_length <= 2 {
-                5
-            } else if step_length <= 6 {
-                4
-            } else {
-                3
-            }
-        }
-        RadarProfile::AccProfile2 => {
-            if step_length <= 3 {
-                5
-            } else if step_length <= 10 {
-                4
-            } else {
-                3
-            }
-        }
-        RadarProfile::AccProfile3 => {
-            if step_length <= 6 {
-                5
-            } else if step_length <= 18 {
-                4
-            } else {
-                3
-            }
-        }
-        RadarProfile::AccProfile4 => {
-            if step_length <= 12 {
-                5
-            } else if step_length <= 36 {
-                4
-            } else {
-                3
-            }
-        }
-        RadarProfile::AccProfile5 => {
-            if step_length <= 24 {
-                5
-            } else {
-                4
-            }
-        }
-    }
-}
-
 /// Base radar session memory calculator
 pub struct SessionMemoryCalculator<'a> {
     config: &'a RadarConfig,
@@ -558,8 +508,6 @@ impl<'a> PresenceMemoryCalculator<'a> {
         let session_calc = SessionMemoryCalculator::new(self.config);
         let sweep_rss = session_calc.rss_heap();
 
-        // Presence filter uses 7 parameters per point
-        const PRESENCE_FILTER_PARAMS: usize = 7;
         let num_points = self.total_num_points();
         let presence_rss = num_points * PRESENCE_FILTER_PARAMS * SIZE_OF_FLOAT;
 
@@ -626,7 +574,6 @@ impl<'a> DistanceMemoryCalculator<'a> {
         let sweeps_per_frame = self.config.sweeps_per_frame() as usize;
 
         // Work buffer for filtering (with padding)
-        const FILTFILT_PAD_LEN: usize = 9;
         let work_buffer = (num_points + 2 * FILTFILT_PAD_LEN) * 2 * SIZE_OF_FLOAT;
 
         // Calibration buffers (conservative estimate)
@@ -672,8 +619,7 @@ impl<'a> DistanceMemoryCalculator<'a> {
     ///
     /// This is the size you should allocate for the static calibration buffer.
     pub fn static_calibration_size(&self) -> usize {
-        // Conservative estimate based on number of points
         let num_points = self.total_num_points();
-        (num_points * SIZE_OF_FLOAT * 2).max(2048)
+        (num_points * SIZE_OF_FLOAT * 2).max(DISTANCE_MIN_STATIC_CAL_SIZE)
     }
 }

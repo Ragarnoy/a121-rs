@@ -1,6 +1,7 @@
 #![warn(missing_docs)]
 
 use core::num::NonZeroU8;
+use core::ptr::NonNull;
 
 use num::Zero;
 
@@ -12,6 +13,7 @@ use profile::RadarProfile;
 use crate::config::hwaas::Hwaas;
 use crate::config::prf::PulseRepetitionFrequency;
 use crate::config::subsweep::Subsweep;
+use crate::sensor::error::SensorError;
 use a121_sys::*;
 
 /// Module for radar configuration errors
@@ -27,7 +29,7 @@ pub mod profile;
 /// Module for subsweep configuration
 pub mod subsweep;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 /// Idle states for the radar sensor between sweeps or frames.
 pub enum RadarIdleState {
     /// Deep sleep state for maximum power saving.
@@ -36,6 +38,18 @@ pub enum RadarIdleState {
     Sleep,
     /// Ready state for quick start of operations.
     Ready,
+}
+
+impl RadarIdleState {
+    /// Converts from FFI value, returning `None` for invalid values.
+    pub const fn from_ffi(value: u32) -> Option<Self> {
+        match value {
+            0 => Some(Self::DeepSleep),
+            1 => Some(Self::Sleep),
+            2 => Some(Self::Ready),
+            _ => None,
+        }
+    }
 }
 
 /// Enum representing different sweep modes for the radar sensor.
@@ -59,55 +73,51 @@ pub enum SweepMode {
 pub struct RadarConfig {
     /// Number of subsweeps in the radar configuration.
     num_subsweep: Option<NonZeroU8>,
-    /// Internal pointer to the radar configuration.
-    inner: *mut acc_config_t,
-}
-
-impl Default for RadarConfig {
-    /// Provides a default instance of `RadarConfig` with an ID of 1.
-    fn default() -> Self {
-        Self::new()
-    }
+    /// Non-null pointer to the radar configuration.
+    inner: NonNull<acc_config_t>,
 }
 
 impl Drop for RadarConfig {
     /// Destroys the radar configuration instance, freeing any allocated resources.
     fn drop(&mut self) {
-        debug_assert!(!self.inner.is_null(), "Radar configuration is null");
-        unsafe { acc_config_destroy(self.inner) };
+        // NonNull guarantees non-null pointer
+        unsafe { acc_config_destroy(self.inner.as_ptr()) };
     }
 }
 
 impl RadarConfig {
-    /// Creates a new radar configuration instance with a specified ID.
-    pub fn new() -> Self {
+    /// Creates a new radar configuration instance.
+    ///
+    /// # Errors
+    ///
+    /// Returns `SensorError::InitFailed` if the configuration could not be created.
+    pub fn new() -> Result<Self, SensorError> {
         #[cfg(feature = "defmt")]
         defmt::trace!("Creating radar configuration");
-        let inner = unsafe { acc_config_create() };
-        if inner.is_null() {
+        let ptr = unsafe { acc_config_create() };
+        let inner = NonNull::new(ptr).ok_or_else(|| {
             #[cfg(feature = "defmt")]
             defmt::error!("Failed to create radar configuration: acc_config_create returned null");
-            panic!("Failed to create radar configuration");
-        }
+            SensorError::InitFailed
+        })?;
         #[cfg(feature = "defmt")]
         defmt::trace!("Radar configuration created successfully");
-        Self {
+        Ok(Self {
             inner,
             num_subsweep: None,
-        }
+        })
     }
 
     /// Returns a mutable pointer to the internal radar configuration structure
     /// # Safety
     /// This function is unsafe because it returns a raw pointer.
     pub unsafe fn mut_ptr(&mut self) -> *mut acc_config_t {
-        debug_assert!(!self.inner.is_null(), "Radar configuration is null");
-        self.inner
+        self.inner.as_ptr()
     }
 
     /// Returns a pointer to the internal radar configuration structure
     pub fn ptr(&self) -> *const acc_config_t {
-        self.inner
+        self.inner.as_ptr()
     }
 
     /// Sets the sweep mode for the radar sensor
@@ -137,12 +147,12 @@ impl RadarConfig {
     ///
     /// * `start_point` - The starting point of the sweep in millimeters.
     pub fn set_start_point(&mut self, start_point: i32) {
-        unsafe { acc_config_start_point_set(self.inner, start_point) };
+        unsafe { acc_config_start_point_set(self.inner.as_ptr(), start_point) };
     }
 
     /// Get the starting point of the sweep.
     pub fn start_point(&self) -> i32 {
-        unsafe { acc_config_start_point_get(self.inner) }
+        unsafe { acc_config_start_point_get(self.inner.as_ptr()) }
     }
 
     /// Set the number of data points to measure in a sweep.
@@ -151,12 +161,12 @@ impl RadarConfig {
     ///
     /// * `num_points` - Number of data points to measure.
     pub fn set_num_points(&mut self, num_points: u16) {
-        unsafe { acc_config_num_points_set(self.inner, num_points) };
+        unsafe { acc_config_num_points_set(self.inner.as_ptr(), num_points) };
     }
 
     /// Get the number of data points set to measure in a sweep.
     pub fn num_points(&self) -> u16 {
-        unsafe { acc_config_num_points_get(self.inner) }
+        unsafe { acc_config_num_points_get(self.inner.as_ptr()) }
     }
 
     /// Set the step length between each data point in a sweep.
@@ -165,12 +175,12 @@ impl RadarConfig {
     ///
     /// * `step_length` - The step length.
     pub fn set_step_length(&mut self, step_length: u16) {
-        unsafe { acc_config_step_length_set(self.inner, step_length) };
+        unsafe { acc_config_step_length_set(self.inner.as_ptr(), step_length) };
     }
 
     /// Get the current step length between each data point in a sweep.
     pub fn step_length(&self) -> u16 {
-        unsafe { acc_config_step_length_get(self.inner) }
+        unsafe { acc_config_step_length_get(self.inner.as_ptr()) }
     }
 
     /// Set the radar profile.
@@ -179,12 +189,12 @@ impl RadarConfig {
     ///
     /// * `profile` - The radar profile to set.
     pub fn set_profile(&mut self, profile: RadarProfile) {
-        unsafe { acc_config_profile_set(self.inner, profile as u32) };
+        unsafe { acc_config_profile_set(self.inner.as_ptr(), profile as u32) };
     }
 
     /// Get the currently used radar profile
     pub fn profile(&self) -> RadarProfile {
-        unsafe { acc_config_profile_get(self.inner) }.into()
+        unsafe { acc_config_profile_get(self.inner.as_ptr()) }.into()
     }
 
     /// Set the hardware accelerated average samples (HWAAS).
@@ -199,7 +209,7 @@ impl RadarConfig {
     ///
     /// * `hwaas` - Number of hardware accelerated average samples.
     pub fn set_hwaas(&mut self, hwaas: Hwaas) -> Result<(), ConfigError> {
-        unsafe { acc_config_hwaas_set(self.inner, hwaas.into()) };
+        unsafe { acc_config_hwaas_set(self.inner.as_ptr(), hwaas.into()) };
         Ok(())
     }
 
@@ -207,7 +217,7 @@ impl RadarConfig {
     ///
     /// Returns the number of hardware accelerated average samples currently set.
     pub fn hwaas(&self) -> Hwaas {
-        unsafe { acc_config_hwaas_get(self.inner) }
+        unsafe { acc_config_hwaas_get(self.inner.as_ptr()) }
             .try_into()
             .unwrap()
     }
@@ -222,14 +232,14 @@ impl RadarConfig {
     ///
     /// * `receiver_gain` - Receiver gain setting.
     pub fn receiver_gain_set(&mut self, receiver_gain: u8) {
-        unsafe { acc_config_receiver_gain_set(self.inner, receiver_gain) };
+        unsafe { acc_config_receiver_gain_set(self.inner.as_ptr(), receiver_gain) };
     }
 
     /// Get the current receiver gain setting.
     ///
     /// Returns the receiver gain setting. The range is between 0 (lowest gain) and 23 (highest gain).
     pub fn receiver_gain(&self) -> u8 {
-        unsafe { acc_config_receiver_gain_get(self.inner) }
+        unsafe { acc_config_receiver_gain_get(self.inner.as_ptr()) }
     }
 
     /// Set the number of sweeps captured in each frame (measurement).
@@ -238,12 +248,12 @@ impl RadarConfig {
     ///
     /// * `sweeps_per_frame` - Number of sweeps per frame.
     pub fn set_sweeps_per_frame(&mut self, sweeps_per_frame: u16) {
-        unsafe { acc_config_sweeps_per_frame_set(self.inner, sweeps_per_frame) };
+        unsafe { acc_config_sweeps_per_frame_set(self.inner.as_ptr(), sweeps_per_frame) };
     }
 
     /// Get the number of sweeps captured in each frame (measurement).
     pub fn sweeps_per_frame(&self) -> u16 {
-        unsafe { acc_config_sweeps_per_frame_get(self.inner) }
+        unsafe { acc_config_sweeps_per_frame_get(self.inner.as_ptr()) }
     }
 
     /// Set the Pulse Repetition Frequency (PRF)
@@ -254,14 +264,14 @@ impl RadarConfig {
     ///
     /// * `prf` - The Pulse Repetition Frequency to use
     pub fn set_prf(&mut self, prf: PulseRepetitionFrequency) {
-        unsafe { acc_config_prf_set(self.inner, prf as acc_config_prf_t) };
+        unsafe { acc_config_prf_set(self.inner.as_ptr(), prf as acc_config_prf_t) };
     }
 
     /// Get the Pulse Repetition Frequency
     ///
     /// Returns the currently set Pulse Repetition Frequency.
     pub fn prf(&self) -> PulseRepetitionFrequency {
-        unsafe { acc_config_prf_get(self.inner) }
+        unsafe { acc_config_prf_get(self.inner.as_ptr()) }
             .try_into()
             .unwrap()
     }
@@ -274,14 +284,14 @@ impl RadarConfig {
     ///
     /// * `enable` - true to enable phase enhancement, false to disable
     pub fn set_phase_enhancement(&mut self, enable: bool) {
-        unsafe { acc_config_phase_enhancement_set(self.inner, enable) };
+        unsafe { acc_config_phase_enhancement_set(self.inner.as_ptr(), enable) };
     }
 
     /// Check if phase enhancement is enabled
     ///
     /// Returns true if phase enhancement is enabled.
     pub fn is_phase_enhancement_enabled(&self) -> bool {
-        unsafe { acc_config_phase_enhancement_get(self.inner) }
+        unsafe { acc_config_phase_enhancement_get(self.inner.as_ptr()) }
     }
 
     /// Enable or disable loopback
@@ -292,14 +302,14 @@ impl RadarConfig {
     ///
     /// * `enable` - true to enable loopback, false otherwise
     pub fn set_loopback(&mut self, enable: bool) {
-        unsafe { acc_config_enable_loopback_set(self.inner, enable) };
+        unsafe { acc_config_enable_loopback_set(self.inner.as_ptr(), enable) };
     }
 
     /// Get the enable loopback configuration
     ///
     /// Returns true if loopback is enabled.
     pub fn is_loopback_enabled(&self) -> bool {
-        unsafe { acc_config_enable_loopback_get(self.inner) }
+        unsafe { acc_config_enable_loopback_get(self.inner.as_ptr()) }
     }
 
     /// Enable or disable double buffering
@@ -311,14 +321,14 @@ impl RadarConfig {
     ///
     /// * `enable` - true to enable double buffering, false otherwise
     pub fn set_double_buffering(&mut self, enable: bool) {
-        unsafe { acc_config_double_buffering_set(self.inner, enable) };
+        unsafe { acc_config_double_buffering_set(self.inner.as_ptr(), enable) };
     }
 
     /// Get the double buffering configuration
     ///
     /// Returns true if double buffering is enabled.
     pub fn is_double_buffering_enabled(&self) -> bool {
-        unsafe { acc_config_double_buffering_get(self.inner) }
+        unsafe { acc_config_double_buffering_get(self.inner.as_ptr()) }
     }
 
     /// Set the frame rate
@@ -330,8 +340,8 @@ impl RadarConfig {
     /// * `frame_rate` - Frame rate in Hz. 0 is interpreted as unlimited
     pub fn set_frame_rate(&mut self, frame_rate: FrameRate) {
         match frame_rate {
-            FrameRate::Unlimited => unsafe { acc_config_frame_rate_set(self.inner, 0.0) },
-            FrameRate::Limited(rate) => unsafe { acc_config_frame_rate_set(self.inner, rate) },
+            FrameRate::Unlimited => unsafe { acc_config_frame_rate_set(self.inner.as_ptr(), 0.0) },
+            FrameRate::Limited(rate) => unsafe { acc_config_frame_rate_set(self.inner.as_ptr(), rate) },
         }
     }
 
@@ -339,7 +349,7 @@ impl RadarConfig {
     ///
     /// Returns the currently set frame rate in Hz.
     pub fn frame_rate(&self) -> FrameRate {
-        let val = unsafe { acc_config_frame_rate_get(self.inner) };
+        let val = unsafe { acc_config_frame_rate_get(self.inner.as_ptr()) };
         if val.is_zero() {
             FrameRate::Unlimited
         } else {
@@ -353,14 +363,14 @@ impl RadarConfig {
     ///
     /// * `enable` - true to enable the transmitter, false to disable it
     pub fn set_transmitter_enabled(&mut self, enable: bool) {
-        unsafe { acc_config_enable_tx_set(self.inner, enable) };
+        unsafe { acc_config_enable_tx_set(self.inner.as_ptr(), enable) };
     }
 
     /// Get transmitter enable configuration
     ///
     /// Returns true if the transmitter is enabled.
     pub fn is_transmitter_enabled(&self) -> bool {
-        unsafe { acc_config_enable_tx_get(self.inner) }
+        unsafe { acc_config_enable_tx_get(self.inner.as_ptr()) }
     }
 
     /// Set inter frame idle state
@@ -369,20 +379,16 @@ impl RadarConfig {
     ///
     /// * `idle_state` - The idle state to use between frames
     pub fn set_inter_frame_idle_state(&mut self, idle_state: RadarIdleState) {
-        unsafe { acc_config_inter_frame_idle_state_set(self.inner, idle_state as u32) };
+        unsafe { acc_config_inter_frame_idle_state_set(self.inner.as_ptr(), idle_state as u32) };
     }
 
     /// Get inter frame idle state
     ///
     /// Returns the currently set idle state used between frames.
+    /// Defaults to `DeepSleep` if FFI returns an invalid value.
     pub fn inter_frame_idle_state(&self) -> RadarIdleState {
-        let val = unsafe { acc_config_inter_frame_idle_state_get(self.inner) };
-        match val {
-            0 => RadarIdleState::DeepSleep,
-            1 => RadarIdleState::Sleep,
-            2 => RadarIdleState::Ready,
-            _ => panic!("Invalid idle state value"),
-        }
+        let val = unsafe { acc_config_inter_frame_idle_state_get(self.inner.as_ptr()) };
+        RadarIdleState::from_ffi(val).unwrap_or(RadarIdleState::DeepSleep)
     }
 
     /// Set inter sweep idle state
@@ -391,20 +397,16 @@ impl RadarConfig {
     ///
     /// * `idle_state` - The idle state to use between sweeps within a frame
     pub fn set_inter_sweep_idle_state(&mut self, idle_state: RadarIdleState) {
-        unsafe { acc_config_inter_sweep_idle_state_set(self.inner, idle_state as u32) };
+        unsafe { acc_config_inter_sweep_idle_state_set(self.inner.as_ptr(), idle_state as u32) };
     }
 
     /// Get inter sweep idle state
     ///
     /// Returns the currently set idle state used between sweeps within a frame.
+    /// Defaults to `DeepSleep` if FFI returns an invalid value.
     pub fn inter_sweep_idle_state(&self) -> RadarIdleState {
-        let val = unsafe { acc_config_inter_sweep_idle_state_get(self.inner) };
-        match val {
-            0 => RadarIdleState::DeepSleep,
-            1 => RadarIdleState::Sleep,
-            2 => RadarIdleState::Ready,
-            _ => panic!("Invalid idle state value"),
-        }
+        let val = unsafe { acc_config_inter_sweep_idle_state_get(self.inner.as_ptr()) };
+        RadarIdleState::from_ffi(val).unwrap_or(RadarIdleState::DeepSleep)
     }
 
     /// Set continuous sweep mode.
@@ -430,7 +432,7 @@ impl RadarConfig {
                 return Err(ContinuousSweepMode);
             }
         }
-        unsafe { acc_config_continuous_sweep_mode_set(self.inner, enabled) };
+        unsafe { acc_config_continuous_sweep_mode_set(self.inner.as_ptr(), enabled) };
         Ok(())
     }
 
@@ -438,7 +440,7 @@ impl RadarConfig {
     ///
     /// Returns true if continuous sweep mode is enabled.
     pub fn is_continuous_sweep_mode_enabled(&self) -> bool {
-        unsafe { acc_config_continuous_sweep_mode_get(self.inner) }
+        unsafe { acc_config_continuous_sweep_mode_get(self.inner.as_ptr()) }
     }
 
     /// Set the sweep rate
@@ -450,7 +452,7 @@ impl RadarConfig {
         if sweep_rate.is_zero() || sweep_rate.is_sign_negative() {
             return Err(ConfigError::SweepRate);
         }
-        unsafe { acc_config_sweep_rate_set(self.inner, sweep_rate) };
+        unsafe { acc_config_sweep_rate_set(self.inner.as_ptr(), sweep_rate) };
         Ok(())
     }
 
@@ -458,7 +460,7 @@ impl RadarConfig {
     ///
     /// Returns the currently set sweep rate in Hz.
     pub fn sweep_rate(&self) -> f32 {
-        unsafe { acc_config_sweep_rate_get(self.inner) }
+        unsafe { acc_config_sweep_rate_get(self.inner.as_ptr()) }
     }
 
     /// Set the number of subsweeps in the radar configuration.
@@ -468,14 +470,14 @@ impl RadarConfig {
         if num_subsweep == 0 {
             return Err(ConfigError::NumSubsweep);
         }
-        unsafe { acc_config_num_subsweeps_set(self.inner, num_subsweep) };
+        unsafe { acc_config_num_subsweeps_set(self.inner.as_ptr(), num_subsweep) };
         self.num_subsweep = NonZeroU8::new(num_subsweep);
         Ok(())
     }
 
     /// Get the number of subsweeps in the radar configuration.
     pub fn num_subsweep(&self) -> u8 {
-        unsafe { acc_config_num_subsweeps_get(self.inner) }
+        unsafe { acc_config_num_subsweeps_get(self.inner.as_ptr()) }
     }
 
     /// Get a subsweep from the radar configuration.
@@ -496,13 +498,15 @@ impl RadarConfig {
     /// * `Ok(u32)` - The buffer size needed for the current configuration
     /// * `Err(ConfigError::BufferSize)` - If the buffer size could not be determined
     pub fn config_buffer_size(&self) -> Result<u32, ConfigError> {
-        let mut buffer_size = 0;
-        let result: bool;
+        use core::mem::MaybeUninit;
 
-        unsafe { result = acc_rss_get_buffer_size(self.inner, &mut buffer_size) };
+        let mut buffer_size = MaybeUninit::<u32>::uninit();
+
+        let result =
+            unsafe { acc_rss_get_buffer_size(self.inner.as_ptr(), buffer_size.as_mut_ptr()) };
 
         if result {
-            Ok(buffer_size)
+            Ok(unsafe { buffer_size.assume_init() })
         } else {
             Err(ConfigError::BufferSize)
         }

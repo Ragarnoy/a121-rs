@@ -1,42 +1,47 @@
 pub mod config;
 pub mod results;
 
-use crate::detector::distance::config::RadarDistanceConfig;
-use crate::detector::distance::results::{DistanceSizes, ProcessDataError};
-use crate::radar::{Radar, RadarState};
-use crate::sensor::calibration::CalibrationResult;
-use crate::sensor::error::SensorError;
-use a121_sys::*;
 use core::ffi::c_void;
+use core::ptr::NonNull;
+
 use embedded_hal::digital::OutputPin;
 use embedded_hal_async::delay::DelayNs;
 use embedded_hal_async::digital::Wait;
+
+use a121_sys::*;
+
+use crate::detector::distance::config::RadarDistanceConfig;
+use crate::detector::distance::results::DistanceSizes;
+use crate::radar::{Radar, RadarState};
+use crate::sensor::calibration::CalibrationResult;
+use crate::sensor::error::{ProcessDataError, SensorError};
 use results::{DistanceResult, DynamicResult};
 
 struct InnerRadarDistanceDetector {
-    inner: *mut acc_detector_distance_handle,
+    inner: NonNull<acc_detector_distance_handle>,
 }
 
 impl InnerRadarDistanceDetector {
     fn new(config: &RadarDistanceConfig) -> Self {
+        let ptr = unsafe { acc_detector_distance_create(config.inner.as_ptr()) };
         Self {
-            inner: unsafe { acc_detector_distance_create(config.inner) },
+            inner: NonNull::new(ptr).expect("Failed to create distance detector"),
         }
     }
 
     fn inner(&self) -> *const acc_detector_distance_handle {
-        self.inner
+        self.inner.as_ptr()
     }
 
     fn inner_mut(&mut self) -> *mut acc_detector_distance_handle {
-        self.inner
+        self.inner.as_ptr()
     }
 }
 
 impl Drop for InnerRadarDistanceDetector {
     fn drop(&mut self) {
-        debug_assert!(!self.inner.is_null(), "Inner detector handle is null");
-        unsafe { acc_detector_distance_destroy(self.inner) }
+        // NonNull guarantees non-null pointer
+        unsafe { acc_detector_distance_destroy(self.inner.as_ptr()) }
     }
 }
 
@@ -427,7 +432,7 @@ where
     ) -> Result<(), SensorError> {
         if acc_detector_distance_prepare(
             self.inner.inner(),
-            self.config.inner,
+            self.config.inner.as_ptr(),
             self.radar.inner_sensor(),
             sensor_cal_result.ptr(),
             buffer.as_mut_ptr() as *mut c_void,

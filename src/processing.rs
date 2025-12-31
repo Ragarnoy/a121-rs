@@ -1,4 +1,5 @@
 use core::ffi::c_void;
+use core::ptr::NonNull;
 
 use metadata::ProcessingMetaData;
 
@@ -49,14 +50,15 @@ impl Default for ProcessingResult {
 }
 
 pub struct Processing {
-    inner: *mut acc_processing_t,
+    inner: NonNull<acc_processing_t>,
     metadata: ProcessingMetaData,
 }
 
 impl Processing {
     pub fn new(config: &RadarConfig) -> Self {
         let mut metadata = ProcessingMetaData::new();
-        let inner = unsafe { acc_processing_create(config.ptr(), metadata.mut_ptr()) };
+        let ptr = unsafe { acc_processing_create(config.ptr(), metadata.mut_ptr()) };
+        let inner = NonNull::new(ptr).expect("Failed to create processing");
         Self { inner, metadata }
     }
 
@@ -68,7 +70,7 @@ impl Processing {
         let mut result = ProcessingResult::new();
         unsafe {
             acc_processing_execute(
-                self.inner,
+                self.inner.as_ptr(),
                 buffer.as_mut_ptr() as *mut c_void,
                 result.mut_ptr(),
             );
@@ -79,10 +81,8 @@ impl Processing {
 
 impl Drop for Processing {
     fn drop(&mut self) {
-        debug_assert!(!self.inner.is_null(), "Processing is null");
-        unsafe {
-            acc_processing_destroy(self.inner);
-        }
+        // NonNull guarantees non-null pointer
+        unsafe { acc_processing_destroy(self.inner.as_ptr()) }
     }
 }
 

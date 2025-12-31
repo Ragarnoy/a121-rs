@@ -9,6 +9,7 @@
 #![warn(missing_docs)]
 
 use core::ops::RangeInclusive;
+use core::ptr::NonNull;
 
 use a121_sys::*;
 
@@ -34,13 +35,21 @@ pub enum ReflectorShape {
         as isize,
 }
 
-impl From<u32> for ReflectorShape {
-    fn from(value: u32) -> Self {
+impl ReflectorShape {
+    /// Converts from FFI value, returning `None` for invalid values.
+    pub const fn from_ffi(value: u32) -> Option<Self> {
         match value {
-            0 => Self::Generic,
-            1 => Self::Planar,
-            _ => panic!("Invalid reflector shape"),
+            0 => Some(Self::Generic),
+            1 => Some(Self::Planar),
+            _ => None,
         }
+    }
+}
+
+impl From<u32> for ReflectorShape {
+    /// Converts from FFI value, defaulting to Generic for invalid values.
+    fn from(value: u32) -> Self {
+        Self::from_ffi(value).unwrap_or(Self::Generic)
     }
 }
 
@@ -62,13 +71,21 @@ pub enum PeakSortingMethod {
         acc_detector_distance_peak_sorting_t_ACC_DETECTOR_DISTANCE_PEAK_SORTING_STRONGEST as isize,
 }
 
-impl From<u32> for PeakSortingMethod {
-    fn from(value: u32) -> Self {
+impl PeakSortingMethod {
+    /// Converts from FFI value, returning `None` for invalid values.
+    pub const fn from_ffi(value: u32) -> Option<Self> {
         match value {
-            0 => Self::Amplitude,
-            1 => Self::Strength,
-            _ => panic!("Invalid peak sorting"),
+            0 => Some(Self::Amplitude),
+            1 => Some(Self::Strength),
+            _ => None,
         }
+    }
+}
+
+impl From<u32> for PeakSortingMethod {
+    /// Converts from FFI value, defaulting to Amplitude for invalid values.
+    fn from(value: u32) -> Self {
+        Self::from_ffi(value).unwrap_or(Self::Amplitude)
     }
 }
 
@@ -89,13 +106,13 @@ pub enum ThresholdMethod {
 /// This struct encapsulates all the parameters and settings for configuring
 /// the distance detection functionality of the radar.
 pub struct RadarDistanceConfig {
-    pub(super) inner: *mut acc_detector_distance_config,
+    pub(super) inner: NonNull<acc_detector_distance_config>,
 }
 
 impl Drop for RadarDistanceConfig {
     fn drop(&mut self) {
-        debug_assert!(self.inner.is_null(), "Dropping a non-null pointer");
-        unsafe { acc_detector_distance_config_destroy(self.inner) }
+        // NonNull guarantees non-null pointer
+        unsafe { acc_detector_distance_config_destroy(self.inner.as_ptr()) }
     }
 }
 
@@ -108,8 +125,9 @@ impl Default for RadarDistanceConfig {
 impl RadarDistanceConfig {
     /// Create a new distance detection configuration.
     fn new() -> Self {
+        let ptr = unsafe { acc_detector_distance_config_create() };
         Self {
-            inner: unsafe { acc_detector_distance_config_create() },
+            inner: NonNull::new(ptr).expect("Failed to create distance config"),
         }
     }
 
@@ -136,22 +154,22 @@ impl RadarDistanceConfig {
 
     /// Sets the start of the measurement interval in meters.
     pub fn set_start_interval(&mut self, start_interval: f32) {
-        unsafe { acc_detector_distance_config_start_set(self.inner, start_interval) }
+        unsafe { acc_detector_distance_config_start_set(self.inner.as_ptr(), start_interval) }
     }
 
     /// Returns the start of the measurement interval in meters.
     pub fn start_interval(&self) -> f32 {
-        unsafe { acc_detector_distance_config_start_get(self.inner) }
+        unsafe { acc_detector_distance_config_start_get(self.inner.as_ptr()) }
     }
 
     /// Sets the end of the measurement interval in meters.
     pub fn set_end_interval(&mut self, end_interval: f32) {
-        unsafe { acc_detector_distance_config_end_set(self.inner, end_interval) }
+        unsafe { acc_detector_distance_config_end_set(self.inner.as_ptr(), end_interval) }
     }
 
     /// Returns the end of the measurement interval in meters.
     pub fn end_interval(&self) -> f32 {
-        unsafe { acc_detector_distance_config_end_get(self.inner) }
+        unsafe { acc_detector_distance_config_end_get(self.inner.as_ptr()) }
     }
 
     /// Sets the maximum step length in points.
@@ -159,37 +177,37 @@ impl RadarDistanceConfig {
     pub fn set_max_step_length(&mut self, max_step_length: MaxStepLenght) {
         match max_step_length {
             MaxStepLenght::ProfileBased => unsafe {
-                acc_detector_distance_config_max_step_length_set(self.inner, 0)
+                acc_detector_distance_config_max_step_length_set(self.inner.as_ptr(), 0)
             },
             MaxStepLenght::Manual(length) => unsafe {
-                acc_detector_distance_config_max_step_length_set(self.inner, length)
+                acc_detector_distance_config_max_step_length_set(self.inner.as_ptr(), length)
             },
         }
     }
 
     /// Returns the maximum step length in points.
     pub fn max_step_length(&self) -> u16 {
-        unsafe { acc_detector_distance_config_max_step_length_get(self.inner) }
+        unsafe { acc_detector_distance_config_max_step_length_get(self.inner.as_ptr()) }
     }
 
     /// Enable or disable close range leakage cancellation.
     /// This feature is used to cancel out the leakage from the close range (< 100mm from the sensor).
     pub fn set_close_range_leakage_cancelation(&mut self, enable: bool) {
         unsafe {
-            acc_detector_distance_config_close_range_leakage_cancellation_set(self.inner, enable)
+            acc_detector_distance_config_close_range_leakage_cancellation_set(self.inner.as_ptr(), enable)
         }
     }
 
     /// Returns the close range leakage cancellation status.
     pub fn close_range_leakage_cancelation(&self) -> bool {
-        unsafe { acc_detector_distance_config_close_range_leakage_cancellation_get(self.inner) }
+        unsafe { acc_detector_distance_config_close_range_leakage_cancellation_get(self.inner.as_ptr()) }
     }
 
     /// Sets the signal quality in dB.
     pub fn set_signal_quality(&mut self, signal_quality: SignalQuality) {
         unsafe {
             acc_detector_distance_config_signal_quality_set(
-                self.inner,
+                self.inner.as_ptr(),
                 signal_quality.clamp(-10.0, 35.0),
             )
         }
@@ -197,55 +215,57 @@ impl RadarDistanceConfig {
 
     /// Returns the signal quality in dB.
     pub fn signal_quality(&self) -> SignalQuality {
-        unsafe { acc_detector_distance_config_signal_quality_get(self.inner) }
+        unsafe { acc_detector_distance_config_signal_quality_get(self.inner.as_ptr()) }
     }
 
     /// Sets the maximum profile to use.
     pub fn set_max_profile(&mut self, max_profile: RadarProfile) {
-        unsafe { acc_detector_distance_config_max_profile_set(self.inner, max_profile as u32) }
+        unsafe { acc_detector_distance_config_max_profile_set(self.inner.as_ptr(), max_profile as u32) }
     }
 
     /// Returns the maximum profile to use.
     pub fn max_profile(&self) -> RadarProfile {
-        unsafe { acc_detector_distance_config_max_profile_get(self.inner) }.into()
+        unsafe { acc_detector_distance_config_max_profile_get(self.inner.as_ptr()) }.into()
     }
 
     /// Sets the threshold method with the given parameters.
     pub fn set_threshold_method(&mut self, method: ThresholdMethod) {
         match method {
             ThresholdMethod::FixedAmplitude(amp) => unsafe {
-                acc_detector_distance_config_threshold_method_set(self.inner, acc_detector_distance_threshold_method_t_ACC_DETECTOR_DISTANCE_THRESHOLD_METHOD_FIXED_AMPLITUDE);
-                acc_detector_distance_config_fixed_amplitude_threshold_value_set(self.inner, amp)
+                acc_detector_distance_config_threshold_method_set(self.inner.as_ptr(), acc_detector_distance_threshold_method_t_ACC_DETECTOR_DISTANCE_THRESHOLD_METHOD_FIXED_AMPLITUDE);
+                acc_detector_distance_config_fixed_amplitude_threshold_value_set(self.inner.as_ptr(), amp)
             },
             ThresholdMethod::FixedStrenght(str) => unsafe {
-                acc_detector_distance_config_threshold_method_set(self.inner, acc_detector_distance_threshold_method_t_ACC_DETECTOR_DISTANCE_THRESHOLD_METHOD_FIXED_STRENGTH);
-                acc_detector_distance_config_fixed_strength_threshold_value_set(self.inner, str)
+                acc_detector_distance_config_threshold_method_set(self.inner.as_ptr(), acc_detector_distance_threshold_method_t_ACC_DETECTOR_DISTANCE_THRESHOLD_METHOD_FIXED_STRENGTH);
+                acc_detector_distance_config_fixed_strength_threshold_value_set(self.inner.as_ptr(), str)
             },
             ThresholdMethod::Recorded(num) => unsafe {
-                acc_detector_distance_config_threshold_method_set(self.inner, acc_detector_distance_threshold_method_t_ACC_DETECTOR_DISTANCE_THRESHOLD_METHOD_RECORDED);
-                acc_detector_distance_config_num_frames_recorded_threshold_set(self.inner, num)
+                acc_detector_distance_config_threshold_method_set(self.inner.as_ptr(), acc_detector_distance_threshold_method_t_ACC_DETECTOR_DISTANCE_THRESHOLD_METHOD_RECORDED);
+                acc_detector_distance_config_num_frames_recorded_threshold_set(self.inner.as_ptr(), num)
             },
             ThresholdMethod::Cfar => unsafe {
-                acc_detector_distance_config_threshold_method_set(self.inner, acc_detector_distance_threshold_method_t_ACC_DETECTOR_DISTANCE_THRESHOLD_METHOD_CFAR);
+                acc_detector_distance_config_threshold_method_set(self.inner.as_ptr(), acc_detector_distance_threshold_method_t_ACC_DETECTOR_DISTANCE_THRESHOLD_METHOD_CFAR);
             },
         }
     }
 
     /// Returns the threshold method.
-    pub fn threshold_method(&self) -> ThresholdMethod {
-        let method = unsafe { acc_detector_distance_config_threshold_method_get(self.inner) };
+    ///
+    /// Returns `None` if the FFI returns an invalid threshold method value.
+    pub fn threshold_method(&self) -> Option<ThresholdMethod> {
+        let method = unsafe { acc_detector_distance_config_threshold_method_get(self.inner.as_ptr()) };
         match method {
-            0 => ThresholdMethod::FixedAmplitude(unsafe {
-                acc_detector_distance_config_fixed_amplitude_threshold_value_get(self.inner)
-            }),
-            1 => ThresholdMethod::FixedStrenght(unsafe {
-                acc_detector_distance_config_fixed_strength_threshold_value_get(self.inner)
-            }),
-            2 => ThresholdMethod::Recorded(unsafe {
-                acc_detector_distance_config_num_frames_recorded_threshold_get(self.inner)
-            }),
-            3 => ThresholdMethod::Cfar,
-            _ => panic!("Invalid threshold method"),
+            0 => Some(ThresholdMethod::FixedAmplitude(unsafe {
+                acc_detector_distance_config_fixed_amplitude_threshold_value_get(self.inner.as_ptr())
+            })),
+            1 => Some(ThresholdMethod::FixedStrenght(unsafe {
+                acc_detector_distance_config_fixed_strength_threshold_value_get(self.inner.as_ptr())
+            })),
+            2 => Some(ThresholdMethod::Recorded(unsafe {
+                acc_detector_distance_config_num_frames_recorded_threshold_get(self.inner.as_ptr())
+            })),
+            3 => Some(ThresholdMethod::Cfar),
+            _ => None,
         }
     }
 
@@ -253,7 +273,7 @@ impl RadarDistanceConfig {
     pub fn set_threshold_sensitivity(&mut self, sensitivity: ThresholdSensitivity) {
         unsafe {
             acc_detector_distance_config_threshold_sensitivity_set(
-                self.inner,
+                self.inner.as_ptr(),
                 sensitivity.clamp(0.0, 1.0),
             )
         }
@@ -261,26 +281,26 @@ impl RadarDistanceConfig {
 
     /// Returns the threshold sensitivity.
     pub fn threshold_sensitivity(&self) -> ThresholdSensitivity {
-        unsafe { acc_detector_distance_config_threshold_sensitivity_get(self.inner) }
+        unsafe { acc_detector_distance_config_threshold_sensitivity_get(self.inner.as_ptr()) }
     }
 
     /// Sets the peak sorting method.
     pub fn set_peak_sorting_method(&mut self, method: PeakSortingMethod) {
-        unsafe { acc_detector_distance_config_peak_sorting_set(self.inner, method as u32) }
+        unsafe { acc_detector_distance_config_peak_sorting_set(self.inner.as_ptr(), method as u32) }
     }
 
     /// Returns the peak sorting method.
     pub fn peak_sorting_method(&self) -> PeakSortingMethod {
-        unsafe { acc_detector_distance_config_peak_sorting_get(self.inner) }.into()
+        unsafe { acc_detector_distance_config_peak_sorting_get(self.inner.as_ptr()) }.into()
     }
 
     /// Sets the reflector shape.
     pub fn set_reflector_shape(&mut self, shape: ReflectorShape) {
-        unsafe { acc_detector_distance_config_reflector_shape_set(self.inner, shape as u32) }
+        unsafe { acc_detector_distance_config_reflector_shape_set(self.inner.as_ptr(), shape as u32) }
     }
 
     /// Returns the reflector shape.
     pub fn reflector_shape(&self) -> ReflectorShape {
-        unsafe { acc_detector_distance_config_reflector_shape_get(self.inner) }.into()
+        unsafe { acc_detector_distance_config_reflector_shape_get(self.inner.as_ptr()) }.into()
     }
 }

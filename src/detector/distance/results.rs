@@ -7,20 +7,6 @@ use a121_sys::{
     acc_detector_distance_result_t, ACC_DETECTOR_DISTANCE_RESULT_MAX_NUM_DISTANCES,
 };
 
-/// Enumerates possible errors that can occur during the processing of radar data.
-#[derive(Debug, Copy, Clone)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub enum ProcessDataError {
-    /// Calibration is needed before processing
-    CalibrationNeeded,
-    /// The processing failed
-    ProcessingFailed,
-    /// The result is not available
-    Unavailable,
-    /// One or more buffers are too small
-    BufferTooSmall,
-}
-
 /// Represents a single detected distance and its strength.
 #[derive(Debug, Default, Copy, Clone)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -152,19 +138,22 @@ pub(super) struct DistanceSizes {
 
 impl DistanceSizes {
     pub(super) fn new(handle: &InnerRadarDistanceDetector) -> Self {
-        let mut buffer_size: u32 = 0;
-        let mut detector_cal_result_static_size: u32 = 0;
+        use core::mem::MaybeUninit;
+
+        let mut buffer_size = MaybeUninit::<u32>::uninit();
+        let mut detector_cal_result_static_size = MaybeUninit::<u32>::uninit();
 
         unsafe {
             acc_detector_distance_get_sizes(
                 handle.inner(),
-                &mut buffer_size as *mut u32,
-                &mut detector_cal_result_static_size as *mut u32,
+                buffer_size.as_mut_ptr(),
+                detector_cal_result_static_size.as_mut_ptr(),
             );
-        }
-        Self {
-            buffer_size: buffer_size as usize,
-            detector_cal_result_static_size: detector_cal_result_static_size as usize,
+            Self {
+                buffer_size: buffer_size.assume_init() as usize,
+                detector_cal_result_static_size: detector_cal_result_static_size.assume_init()
+                    as usize,
+            }
         }
     }
 }

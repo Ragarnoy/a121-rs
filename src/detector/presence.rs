@@ -2,28 +2,31 @@ pub mod config;
 pub mod results;
 
 use crate::detector::presence::config::PresenceConfig;
-use crate::detector::presence::results::{PresenceMetadata, PresenceResult, ProcessDataError};
+use crate::detector::presence::results::{PresenceMetadata, PresenceResult};
+use crate::sensor::error::ProcessDataError;
 use crate::radar::{Radar, RadarState};
 use crate::sensor::calibration::CalibrationResult;
 use crate::sensor::error::SensorError;
 use a121_sys::*;
 use core::ffi::c_void;
+use core::ptr::NonNull;
 use embedded_hal::digital::OutputPin;
 use embedded_hal_async::delay::DelayNs;
 use embedded_hal_async::digital::Wait;
 
 struct InnerPresenceDetector {
     presence_metadata: PresenceMetadata,
-    inner: *mut acc_detector_presence_handle,
+    inner: NonNull<acc_detector_presence_handle>,
 }
 
 impl InnerPresenceDetector {
     fn new(config: &PresenceConfig) -> Self {
         let mut presence_metadata = PresenceMetadata::default();
+        let ptr = unsafe {
+            acc_detector_presence_create(config.inner.as_ptr(), presence_metadata.mut_ptr())
+        };
         Self {
-            inner: unsafe {
-                acc_detector_presence_create(config.inner, presence_metadata.mut_ptr())
-            },
+            inner: NonNull::new(ptr).expect("Failed to create presence detector"),
             presence_metadata,
         }
     }
@@ -33,18 +36,18 @@ impl InnerPresenceDetector {
     }
 
     fn inner(&self) -> *const acc_detector_presence_handle {
-        self.inner
+        self.inner.as_ptr()
     }
 
     fn inner_mut(&mut self) -> *mut acc_detector_presence_handle {
-        self.inner
+        self.inner.as_ptr()
     }
 }
 
 impl Drop for InnerPresenceDetector {
     fn drop(&mut self) {
-        debug_assert!(!self.inner.is_null(), "Detector handle is null");
-        unsafe { acc_detector_presence_destroy(self.inner) }
+        // NonNull guarantees non-null pointer
+        unsafe { acc_detector_presence_destroy(self.inner.as_ptr()) }
     }
 }
 
@@ -136,7 +139,7 @@ where
     ) -> Result<(), SensorError> {
         let prepare_success = acc_detector_presence_prepare(
             self.inner.inner_mut(),
-            self.config.inner,
+            self.config.inner.as_ptr(),
             self.radar.inner_sensor(),
             sensor_cal_result.ptr(),
             buffer.as_mut_ptr() as *mut c_void,
@@ -151,11 +154,13 @@ where
     }
 
     pub fn get_buffer_size(&self) -> usize {
-        let mut buffer_size: u32 = 0;
+        use core::mem::MaybeUninit;
+
+        let mut buffer_size = MaybeUninit::<u32>::uninit();
         unsafe {
-            acc_detector_presence_get_buffer_size(self.inner.inner(), &mut buffer_size as *mut u32);
+            acc_detector_presence_get_buffer_size(self.inner.inner(), buffer_size.as_mut_ptr());
+            buffer_size.assume_init() as usize
         }
-        buffer_size as usize
     }
 
     /// Estimates memory requirements for this presence detector configuration.
@@ -222,14 +227,18 @@ where
         &'_ mut self,
         buffer: &mut [u8],
     ) -> Result<PresenceResult<'_>, ProcessDataError> {
-        let mut result = PresenceResult::new();
+        use core::mem::MaybeUninit;
+
+        let mut ffi_result = MaybeUninit::<acc_detector_presence_result_t>::uninit();
         let detection_success = acc_detector_presence_process(
             self.inner.inner_mut(),
             buffer.as_mut_ptr() as *mut c_void,
-            &mut result.inner() as *mut acc_detector_presence_result_t,
+            ffi_result.as_mut_ptr(),
         );
 
         if detection_success {
+            let mut result = PresenceResult::new();
+            result.update_from_detector_result(&ffi_result.assume_init());
             Ok(result)
         } else {
             Err(ProcessDataError::ProcessingFailed)
