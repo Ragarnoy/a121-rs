@@ -14,7 +14,7 @@ name: example-xe125_nightly-sys_gcc
 env:
   CPATH: "/usr/lib/arm-none-eabi/include"
   ACC_RSS_LIBS: "/home/runner/work/a121-rs/a121-rs/staticlibs"
-  RLIB_PATH: "cortex_m4_gcc/a121-v1.5.0/lib"
+  RLIB_PATH: "cortex_m4_gcc/a121-v1.12.0/lib"
 jobs:
   nostd:
     runs-on: ubuntu-latest
