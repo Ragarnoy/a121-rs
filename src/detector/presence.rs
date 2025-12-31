@@ -3,9 +3,9 @@ pub mod results;
 
 use crate::detector::presence::config::PresenceConfig;
 use crate::detector::presence::results::{PresenceMetadata, PresenceResult};
-use crate::sensor::error::ProcessDataError;
 use crate::radar::{Radar, RadarState};
 use crate::sensor::calibration::CalibrationResult;
+use crate::sensor::error::ProcessDataError;
 use crate::sensor::error::SensorError;
 use a121_sys::*;
 use core::ffi::c_void;
@@ -124,7 +124,10 @@ where
             return Err(SensorError::BufferTooSmall);
         }
 
-        unsafe { self.prepare_detector_unchecked(sensor_cal_result, buffer).await }
+        unsafe {
+            self.prepare_detector_unchecked(sensor_cal_result, buffer)
+                .await
+        }
     }
 
     /// Prepares the detector without buffer size checks.

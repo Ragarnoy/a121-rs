@@ -341,7 +341,9 @@ impl RadarConfig {
     pub fn set_frame_rate(&mut self, frame_rate: FrameRate) {
         match frame_rate {
             FrameRate::Unlimited => unsafe { acc_config_frame_rate_set(self.inner.as_ptr(), 0.0) },
-            FrameRate::Limited(rate) => unsafe { acc_config_frame_rate_set(self.inner.as_ptr(), rate) },
+            FrameRate::Limited(rate) => unsafe {
+                acc_config_frame_rate_set(self.inner.as_ptr(), rate)
+            },
         }
     }
 

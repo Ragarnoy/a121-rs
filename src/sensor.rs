@@ -30,18 +30,20 @@ impl InnerSensor {
     pub fn new(sensor_id: u32) -> Option<Self> {
         let sensor_ptr = unsafe { acc_sensor_create(sensor_id as acc_sensor_id_t) };
 
-        NonNull::new(sensor_ptr).map(|inner| {
-            #[cfg(feature = "defmt")]
-            defmt::trace!("Successfully created sensor {}", sensor_id);
-            Self { inner }
-        }).or_else(|| {
-            #[cfg(feature = "defmt")]
-            defmt::error!(
-                "Failed to create sensor {}: acc_sensor_create returned null",
-                sensor_id
-            );
-            None
-        })
+        NonNull::new(sensor_ptr)
+            .map(|inner| {
+                #[cfg(feature = "defmt")]
+                defmt::trace!("Successfully created sensor {}", sensor_id);
+                Self { inner }
+            })
+            .or_else(|| {
+                #[cfg(feature = "defmt")]
+                defmt::error!(
+                    "Failed to create sensor {}: acc_sensor_create returned null",
+                    sensor_id
+                );
+                None
+            })
     }
 }
 

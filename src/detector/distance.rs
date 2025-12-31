@@ -253,8 +253,7 @@ where
                 buffer.len() as u32,
                 detector_cal_result_static.as_mut_ptr(),
                 detector_cal_result_static.len() as u32,
-                &mut detector_cal_result_dynamic.inner
-                    as *mut acc_detector_cal_result_dynamic_t,
+                &mut detector_cal_result_dynamic.inner as *mut acc_detector_cal_result_dynamic_t,
                 &mut calibration_complete as *mut bool,
             );
 
@@ -342,7 +341,10 @@ where
             return Err(SensorError::BufferTooSmall);
         }
 
-        unsafe { self.update_calibration_unchecked(sensor_cal_result, buffer).await }
+        unsafe {
+            self.update_calibration_unchecked(sensor_cal_result, buffer)
+                .await
+        }
     }
 
     /// Updates calibration without buffer size checks.
@@ -484,7 +486,11 @@ where
         }
 
         unsafe {
-            self.process_data_unchecked(buffer, detector_cal_result_static, detector_cal_result_dynamic)
+            self.process_data_unchecked(
+                buffer,
+                detector_cal_result_static,
+                detector_cal_result_dynamic,
+            )
         }
     }
 

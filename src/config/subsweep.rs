@@ -20,7 +20,9 @@ impl Subsweep {
     /// * `config` - A reference to a `Config` instance.
     /// * `start_point` - The start point for the subsweep.
     pub fn set_start_point(&self, config: &mut RadarConfig, start_point: i32) {
-        unsafe { acc_config_subsweep_start_point_set(config.inner.as_ptr(), start_point, self.index) };
+        unsafe {
+            acc_config_subsweep_start_point_set(config.inner.as_ptr(), start_point, self.index)
+        };
     }
 
     /// Gets start point for subsweep
@@ -33,7 +35,9 @@ impl Subsweep {
     /// * `config` - A reference to a `Config` instance.
     /// * `num_points` - The number of points for the subsweep.
     pub fn set_num_points(&self, config: &mut RadarConfig, num_points: u16) {
-        unsafe { acc_config_subsweep_num_points_set(config.inner.as_ptr(), num_points, self.index) };
+        unsafe {
+            acc_config_subsweep_num_points_set(config.inner.as_ptr(), num_points, self.index)
+        };
     }
 
     /// Gets number of points for subsweep
@@ -46,7 +50,9 @@ impl Subsweep {
     /// * `config` - A reference to a `Config` instance.
     /// * `step_length` - The step length for the subsweep.
     pub fn set_step_length(&self, config: &mut RadarConfig, step_length: u16) {
-        unsafe { acc_config_subsweep_step_length_set(config.inner.as_ptr(), step_length, self.index) };
+        unsafe {
+            acc_config_subsweep_step_length_set(config.inner.as_ptr(), step_length, self.index)
+        };
     }
 
     /// Gets step length for subsweep
@@ -59,12 +65,19 @@ impl Subsweep {
     /// * `config` - A reference to a `Config` instance.
     /// * `profile` - The profile for the subsweep.
     pub fn set_profile(&self, config: &mut RadarConfig, profile: RadarProfile) {
-        unsafe { acc_config_subsweep_profile_set(config.inner.as_ptr(), profile as u32, self.index) };
+        unsafe {
+            acc_config_subsweep_profile_set(config.inner.as_ptr(), profile as u32, self.index)
+        };
     }
 
     /// Gets profile for subsweep
     pub fn profile(&self, config: &RadarConfig) -> RadarProfile {
-        unsafe { RadarProfile::from(acc_config_subsweep_profile_get(config.inner.as_ptr(), self.index)) }
+        unsafe {
+            RadarProfile::from(acc_config_subsweep_profile_get(
+                config.inner.as_ptr(),
+                self.index,
+            ))
+        }
     }
 
     /// Sets Hardware accelerated average samples for subsweep
@@ -77,7 +90,13 @@ impl Subsweep {
 
     /// Gets Hardware accelerated average samples for subsweep
     pub fn hwaas(&self, config: &RadarConfig) -> Hwaas {
-        unsafe { Hwaas::try_from(acc_config_subsweep_hwaas_get(config.inner.as_ptr(), self.index)).unwrap() }
+        unsafe {
+            Hwaas::try_from(acc_config_subsweep_hwaas_get(
+                config.inner.as_ptr(),
+                self.index,
+            ))
+            .unwrap()
+        }
     }
 
     /// Sets receiver gain for subsweep
@@ -122,7 +141,9 @@ impl Subsweep {
 
     /// Set the phase enhancement enabled configuration
     pub fn set_phase_enhancement_enabled(&self, config: &mut RadarConfig, enable: bool) {
-        unsafe { acc_config_subsweep_phase_enhancement_set(config.inner.as_ptr(), enable, self.index) };
+        unsafe {
+            acc_config_subsweep_phase_enhancement_set(config.inner.as_ptr(), enable, self.index)
+        };
     }
 
     /// Get the phase enhancement enabled configuration
@@ -132,7 +153,9 @@ impl Subsweep {
 
     /// Set the loopback enabled configuration
     pub fn set_loopback_enabled(&self, config: &mut RadarConfig, enable: bool) {
-        unsafe { acc_config_subsweep_enable_loopback_set(config.inner.as_ptr(), enable, self.index) };
+        unsafe {
+            acc_config_subsweep_enable_loopback_set(config.inner.as_ptr(), enable, self.index)
+        };
     }
 
     /// Get the loopback enabled configuration

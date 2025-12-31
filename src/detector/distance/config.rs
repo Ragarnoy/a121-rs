@@ -194,13 +194,18 @@ impl RadarDistanceConfig {
     /// This feature is used to cancel out the leakage from the close range (< 100mm from the sensor).
     pub fn set_close_range_leakage_cancelation(&mut self, enable: bool) {
         unsafe {
-            acc_detector_distance_config_close_range_leakage_cancellation_set(self.inner.as_ptr(), enable)
+            acc_detector_distance_config_close_range_leakage_cancellation_set(
+                self.inner.as_ptr(),
+                enable,
+            )
         }
     }
 
     /// Returns the close range leakage cancellation status.
     pub fn close_range_leakage_cancelation(&self) -> bool {
-        unsafe { acc_detector_distance_config_close_range_leakage_cancellation_get(self.inner.as_ptr()) }
+        unsafe {
+            acc_detector_distance_config_close_range_leakage_cancellation_get(self.inner.as_ptr())
+        }
     }
 
     /// Sets the signal quality in dB.
@@ -220,7 +225,9 @@ impl RadarDistanceConfig {
 
     /// Sets the maximum profile to use.
     pub fn set_max_profile(&mut self, max_profile: RadarProfile) {
-        unsafe { acc_detector_distance_config_max_profile_set(self.inner.as_ptr(), max_profile as u32) }
+        unsafe {
+            acc_detector_distance_config_max_profile_set(self.inner.as_ptr(), max_profile as u32)
+        }
     }
 
     /// Returns the maximum profile to use.
@@ -233,15 +240,24 @@ impl RadarDistanceConfig {
         match method {
             ThresholdMethod::FixedAmplitude(amp) => unsafe {
                 acc_detector_distance_config_threshold_method_set(self.inner.as_ptr(), acc_detector_distance_threshold_method_t_ACC_DETECTOR_DISTANCE_THRESHOLD_METHOD_FIXED_AMPLITUDE);
-                acc_detector_distance_config_fixed_amplitude_threshold_value_set(self.inner.as_ptr(), amp)
+                acc_detector_distance_config_fixed_amplitude_threshold_value_set(
+                    self.inner.as_ptr(),
+                    amp,
+                )
             },
             ThresholdMethod::FixedStrenght(str) => unsafe {
                 acc_detector_distance_config_threshold_method_set(self.inner.as_ptr(), acc_detector_distance_threshold_method_t_ACC_DETECTOR_DISTANCE_THRESHOLD_METHOD_FIXED_STRENGTH);
-                acc_detector_distance_config_fixed_strength_threshold_value_set(self.inner.as_ptr(), str)
+                acc_detector_distance_config_fixed_strength_threshold_value_set(
+                    self.inner.as_ptr(),
+                    str,
+                )
             },
             ThresholdMethod::Recorded(num) => unsafe {
                 acc_detector_distance_config_threshold_method_set(self.inner.as_ptr(), acc_detector_distance_threshold_method_t_ACC_DETECTOR_DISTANCE_THRESHOLD_METHOD_RECORDED);
-                acc_detector_distance_config_num_frames_recorded_threshold_set(self.inner.as_ptr(), num)
+                acc_detector_distance_config_num_frames_recorded_threshold_set(
+                    self.inner.as_ptr(),
+                    num,
+                )
             },
             ThresholdMethod::Cfar => unsafe {
                 acc_detector_distance_config_threshold_method_set(self.inner.as_ptr(), acc_detector_distance_threshold_method_t_ACC_DETECTOR_DISTANCE_THRESHOLD_METHOD_CFAR);
@@ -253,10 +269,13 @@ impl RadarDistanceConfig {
     ///
     /// Returns `None` if the FFI returns an invalid threshold method value.
     pub fn threshold_method(&self) -> Option<ThresholdMethod> {
-        let method = unsafe { acc_detector_distance_config_threshold_method_get(self.inner.as_ptr()) };
+        let method =
+            unsafe { acc_detector_distance_config_threshold_method_get(self.inner.as_ptr()) };
         match method {
             0 => Some(ThresholdMethod::FixedAmplitude(unsafe {
-                acc_detector_distance_config_fixed_amplitude_threshold_value_get(self.inner.as_ptr())
+                acc_detector_distance_config_fixed_amplitude_threshold_value_get(
+                    self.inner.as_ptr(),
+                )
             })),
             1 => Some(ThresholdMethod::FixedStrenght(unsafe {
                 acc_detector_distance_config_fixed_strength_threshold_value_get(self.inner.as_ptr())
@@ -296,7 +315,9 @@ impl RadarDistanceConfig {
 
     /// Sets the reflector shape.
     pub fn set_reflector_shape(&mut self, shape: ReflectorShape) {
-        unsafe { acc_detector_distance_config_reflector_shape_set(self.inner.as_ptr(), shape as u32) }
+        unsafe {
+            acc_detector_distance_config_reflector_shape_set(self.inner.as_ptr(), shape as u32)
+        }
     }
 
     /// Returns the reflector shape.

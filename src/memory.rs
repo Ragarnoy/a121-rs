@@ -135,7 +135,8 @@ pub const fn calc_session_external_heap(
     num_subsweeps: u8,
     sweeps_per_frame: u16,
 ) -> usize {
-    let total_points = num_points_per_subsweep as usize * num_subsweeps as usize * sweeps_per_frame as usize;
+    let total_points =
+        num_points_per_subsweep as usize * num_subsweeps as usize * sweeps_per_frame as usize;
     let buffer_size = total_points * BYTES_PER_POINT;
 
     let base = if buffer_size > CALIB_BUFFER {
