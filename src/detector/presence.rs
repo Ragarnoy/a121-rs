@@ -166,6 +166,19 @@ where
         }
     }
 
+    /// Resets the internal filters of the presence detector.
+    ///
+    /// This clears the detector's internal state, which can be useful when:
+    /// - Reinitializing detection after a pause
+    /// - Changing measurement configurations
+    /// - Clearing accumulated filter state
+    ///
+    /// Note: For automatic filter reset during prepare, use
+    /// [`PresenceConfig::set_reset_filters_on_prepare`](config::PresenceConfig::set_reset_filters_on_prepare).
+    pub fn reset_filters(&mut self) {
+        unsafe { acc_detector_presence_reset_filters(self.inner.inner_mut()) }
+    }
+
     /// Estimates memory requirements for this presence detector configuration.
     ///
     /// This method provides a conservative estimate of memory requirements based on

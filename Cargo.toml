@@ -9,11 +9,11 @@ categories = ["embedded", "no-std"]
 readme = "README.md"
 license = "MIT"
 edition = "2021"
-version = "0.1.5"
+version = "0.2.0"
 rust-version = "1.82"
 
 [dependencies]
-a121-sys = { version = "0.6.0", features = ["distance", "presence"] }
+a121-sys = { version = "0.7.0", features = ["distance", "presence"] }
 
 defmt = { version = "1.0.1", optional = true }
 
