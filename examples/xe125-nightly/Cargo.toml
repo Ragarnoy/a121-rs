@@ -14,13 +14,13 @@ cortex-m = { version = "0.7", features = ["critical-section-single-core", "inlin
 cortex-m-rt = "0.7"
 
 defmt = "1.0.1"
-defmt-rtt = "1.0.0"
+defmt-rtt = "1.1.0"
 panic-probe = { version = "1.0.0", features = ["print-defmt"] }
 
 embedded-hal = "1.0.0"
-embassy-executor = { git = "https://github.com/embassy-rs/embassy.git", features = ["arch-cortex-m", "executor-thread", "defmt"] }
-embassy-time = { git = "https://github.com/embassy-rs/embassy.git", features = [ "defmt", "tick-hz-32_768" ]}
-embassy-stm32 = { git = "https://github.com/embassy-rs/embassy.git", features = [ "defmt", "unstable-pac", "stm32l431cb", "memory-x", "time-driver-any", "exti", "chrono"] }
+embassy-executor = { version = "0.9", features = ["arch-cortex-m", "executor-thread", "defmt"] }
+embassy-time = { version = "0.5", features = ["defmt"] }
+embassy-stm32 = { version = "0.4", features = ["defmt", "stm32l431cb", "memory-x", "time-driver-any", "exti", "chrono"] }
 embedded-hal-bus = { version = "0.3.0"}
 
 talc = "4.4"
