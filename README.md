@@ -62,10 +62,31 @@ See the [documentation](https://docs.rs/a121-rs) for detailed usage instructions
 | libm           | Use libm crate for floating point operations                                                                                 |
 | nightly-logger | If the C wrapper for logging does not compile with stable rust, enable this feature to use nightly rust with a custom logger |
 
+## Bring-up registers
+
+The [`bringup`](https://docs.rs/a121-rs/latest/a121_rs/bringup/index.html) module exposes direct
+16-bit ASIC register read/write over SPI (same framing as the RSS library). Useful before calling
+the full radar API:
+
+```rust
+use a121_rs::bringup::{read_asic_id, SpiTransfer};
+
+// After wiring SPI + enable pin:
+let id = read_asic_id(&mut my_spi)?;
+```
+
+[`AccHalImpl::new_with_transfer`](https://docs.rs/a121-rs/latest/a121_rs/hal/struct.AccHalImpl.html#method.new_with_transfer)
+accepts a function-pointer SPI callback for boards where the existing `SpiDevice` HAL is awkward.
+
 ## Examples
 
-Check out the `examples/` directory for demonstrations on how to use _a121-rs_ with various microcontroller units.
-These examples cover basic setups and common use cases to help you get started quickly.
+| Example | Target |
+|---------|--------|
+| `examples/xe121_l433rc` | STM32L433 + XM125 |
+| `examples/stm32wba65ri` | STM32WBA65RI bring-up (ASIC ID + RSS version) |
+| `examples/esp32*` | Espressif |
+
+Set `A121_RSS_LIB` to the directory containing `libacconeer_a121.a` when building firmware examples.
 
 **Note:** For the esp32c6 example, you need to do additional steps before you can compile successfully:
 - Add the static libraries (.a) to the acc folder, you can request these from Acconeer
