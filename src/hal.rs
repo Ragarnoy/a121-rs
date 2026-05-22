@@ -9,6 +9,18 @@ use embassy_sync::blocking_mutex::Mutex;
 use embedded_hal::spi::{ErrorKind as SpiErrorKind, SpiDevice};
 
 use a121_sys::{acc_hal_a121_t, acc_hal_optimization_t, acc_rss_hal_register, acc_sensor_id_t};
+use critical_section::Mutex as CsMutex;
+
+use crate::bringup::Error as BringupError;
+
+extern "C" {
+    fn c_log_stub(
+        level: a121_sys::acc_log_level_t,
+        module: *const c_char,
+        format: *const c_char,
+        ...
+    );
+}
 
 pub type RadarSpi = dyn SpiDevice<u8, Error = SpiErrorKind> + Send;
 pub type RefRadarSpi = &'static mut RadarSpi;
@@ -27,6 +39,10 @@ pub type RefRadarSpi = &'static mut RadarSpi;
 /// and is not accessed after it has been freed or gone out of scope.
 static SPI_INSTANCE: Mutex<CriticalSectionRawMutex, RefCell<Option<RefRadarSpi>>> =
     Mutex::new(RefCell::new(None));
+
+type SpiTransferFn = fn(&mut [u8]) -> Result<(), BringupError>;
+
+static SPI_TRANSFER_FN: CsMutex<RefCell<Option<SpiTransferFn>>> = CsMutex::new(RefCell::new(None));
 
 /// Represents the hardware abstraction layer implementation for the radar sensor.
 ///
@@ -55,10 +71,34 @@ impl AccHalImpl {
             #[cfg(feature = "nightly-logger")]
             log: Some(logger),
             #[cfg(not(feature = "nightly-logger"))]
-            log: Some(a121_sys::c_log_stub),
+            log: Some(c_log_stub),
             optimization: acc_hal_optimization_t { transfer16: None },
         };
         SPI_INSTANCE.lock(|cell| cell.replace(Some(spi)));
+        Self { inner }
+    }
+
+    /// HAL using a plain SPI callback (no `SpiDevice` trait object).
+    ///
+    /// Use this when integrating with `ExclusiveDevice` + `embassy_futures::block_on`, or any
+    /// platform where [`Self::new`] is awkward. Pair with [`crate::bringup`] for register tests.
+    pub fn new_with_transfer(transfer: SpiTransferFn, max_spi_transfer_size: u16) -> Self {
+        critical_section::with(|cs| {
+            SPI_TRANSFER_FN.borrow(cs).replace(Some(transfer));
+        });
+
+        let inner = acc_hal_a121_t {
+            max_spi_transfer_size,
+            mem_alloc: Some(mem_alloc),
+            mem_free: Some(mem_free),
+            transfer: Some(Self::transfer8_from_fn),
+            #[cfg(feature = "nightly-logger")]
+            log: Some(logger),
+            #[cfg(not(feature = "nightly-logger"))]
+            log: Some(c_log_stub),
+            optimization: acc_hal_optimization_t { transfer16: None },
+        };
+
         Self { inner }
     }
 
@@ -100,12 +140,25 @@ impl AccHalImpl {
         buffer_length: usize,
     ) {
         let tmp_buf = unsafe { core::slice::from_raw_parts_mut(buffer, buffer_length) };
-        // Borrow a mutable reference to the SpiBus
         SPI_INSTANCE.lock(|cell| unsafe {
             let mut binding = cell.borrow_mut();
             let spi = binding.as_mut().unwrap_unchecked();
-            // Perform the SPI transfer
             spi.transfer_in_place(tmp_buf).unwrap_unchecked();
+        });
+    }
+
+    extern "C" fn transfer8_from_fn(
+        _sensor_id: acc_sensor_id_t,
+        buffer: *mut u8,
+        buffer_length: usize,
+    ) {
+        let slice = unsafe { core::slice::from_raw_parts_mut(buffer, buffer_length) };
+        critical_section::with(|cs| {
+            let transfer = SPI_TRANSFER_FN
+                .borrow(cs)
+                .borrow()
+                .expect("SPI transfer callback not set");
+            transfer(slice).expect("SPI transfer failed");
         });
     }
 

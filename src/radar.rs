@@ -1,5 +1,7 @@
 pub mod version;
 
+pub use version::rss_version;
+
 use a121_sys::{acc_sensor_connected, acc_sensor_id_t, acc_sensor_t};
 use embedded_hal::digital::OutputPin;
 use embedded_hal::spi::{ErrorKind as SpiErrorKind, SpiDevice};

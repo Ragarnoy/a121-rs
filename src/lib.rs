@@ -42,6 +42,8 @@ extern crate std;
 
 extern crate alloc;
 
+/// Low-level ASIC register access for bring-up
+pub mod bringup;
 /// Configuration for the radar sensor
 pub mod config;
 #[cfg(any(feature = "distance", feature = "presence"))]
