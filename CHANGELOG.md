@@ -26,7 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the SDK sorting method it selects.
 - **Breaking:** removed `impl From<PulseRepetitionFrequency> for u32`, which returned the frequency in
   Hz rather than the SDK enum value. Use `PulseRepetitionFrequency::value()` for the frequency.
-- `RadarDistanceConfig::balanced()` (and `Default`) uses a 0.5–2.1 m interval, matching the SDK
+- `RadarDistanceConfig::balanced()` uses a 0.5–2.1 m interval, matching the SDK
   example, instead of 15–17 m.
 - `Radar::calibrate` leaves the radar in the `Enabled` state, since calibration power-cycles the
   sensor. A successful detector `prepare_detector` moves the radar to `Ready`.
@@ -44,6 +44,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `AlignedBuffer`). `measure` also requires the buffer size of the prepared configuration or detector.
 - **Breaking:** removed `PREPARE_BUFFER_SIZE`. The scratch buffer is checked against
   `RadarConfig::config_buffer_size()` at runtime instead.
+- **Breaking:** `RadarDistanceConfig::balanced()` returns `Result`, and `RadarDistanceConfig` no longer
+  implements `Default`. `PresenceConfig::new()` replaces `PresenceConfig::default()`. Both fail with
+  `SensorError::InitFailed` instead of panicking when the SDK cannot allocate the configuration.
+- **Breaking:** `ProcessingMetaData::subsweep_data_offset` and `subsweep_data_length` return
+  `Option<usize>` instead of panicking on an out-of-range index.
+- **Breaking:** `SensorError` and `ProcessDataError` have new variants (see Added), so exhaustive
+  matches on them need new arms.
+- **Breaking:** `Radar::check_status` and `RadarDistanceDetector::print_status` return
+  `Result<(), SensorError>`, failing with `SpiTransferFailed` when the status read fails.
+- `Radar::hibernate_on` leaves the radar unprepared if an SPI transfer fails, since the sensor may be
+  half-hibernated. `Radar::reset_sensor` recovers it.
 - The xe125 example links newlib's `sinf`, `cosf` and `tanf` instead of the compiler_builtins ones,
   which saves about 10 KB of flash, and logs at `info` level by default.
 
@@ -58,6 +69,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   crate root. They appear in public signatures but were not nameable before.
 - Host unit tests, run against the stub libraries.
 - `RadarBuffer<N>` and `AlignedBuffer`: byte buffers aligned as the SDK requires.
+- `SensorError::SpiTransferFailed`: an SPI transfer failed during the SDK call. The SDK's transfer
+  callback cannot return an error, so the failure is recorded and checked after each SDK call that
+  talks to the sensor, which then fails even if the SDK reported success.
 - `SensorError::BufferMisaligned`, `SensorError::EnablePinFailed` and
   `ProcessDataError::BufferMisaligned`.
 
@@ -80,6 +94,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - An enable pin or interrupt error panicked instead of returning an error, including in the distance
   detector's calibration.
 - A failed detector prepare left the radar ready with its previous preparation.
+- Creating a distance or presence detector panicked when the SDK returned NULL. It returns
+  `SensorError::InitFailed`.
+- `RadarConfig::hwaas()` and distance results could panic on unexpected SDK values.
+
 - `Hwaas` accepted 0. The SDK range is 1–511.
 - `RadarDistanceDetector::update_calibration` ignored SDK failures after the first step and could wait
   forever.
@@ -91,3 +109,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   memory.
 - CI: tests now run (they were gated on a matrix that did not exist), the example job checks the
   example instead of the library, and host jobs build against the stub libraries.
+
+### Removed
+- The unused 16-bit SPI transfer callback, which contained `todo!()`.

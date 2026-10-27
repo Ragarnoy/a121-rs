@@ -3,6 +3,7 @@ pub mod results;
 
 use crate::detector::presence::config::PresenceConfig;
 use crate::detector::presence::results::{PresenceMetadata, PresenceResult};
+use crate::hal::spi_checked;
 use crate::radar::{check_buffer, Radar, RadarState};
 use crate::sensor::calibration::CalibrationResult;
 use crate::sensor::error::ProcessDataError;
@@ -20,15 +21,16 @@ struct InnerPresenceDetector {
 }
 
 impl InnerPresenceDetector {
-    fn new(config: &PresenceConfig) -> Self {
+    fn new(config: &PresenceConfig) -> Result<Self, SensorError> {
         let mut presence_metadata = PresenceMetadata::default();
         let ptr = unsafe {
             acc_detector_presence_create(config.inner.as_ptr(), presence_metadata.mut_ptr())
         };
-        Self {
-            inner: NonNull::new(ptr).expect("Failed to create presence detector"),
+        let inner = NonNull::new(ptr).ok_or(SensorError::InitFailed)?;
+        Ok(Self {
+            inner,
             presence_metadata,
-        }
+        })
     }
 
     pub fn presence_metadata(&self) -> &PresenceMetadata {
@@ -74,8 +76,8 @@ where
         if radar.state() != RadarState::Ready {
             return Err(SensorError::NotReady);
         }
-        let config = PresenceConfig::default();
-        let inner = InnerPresenceDetector::new(&config);
+        let config = PresenceConfig::new()?;
+        let inner = InnerPresenceDetector::new(&config)?;
         Ok(Self {
             radar,
             inner,
@@ -92,7 +94,7 @@ where
         if radar.state() != RadarState::Ready {
             return Err(SensorError::NotReady);
         }
-        let inner = InnerPresenceDetector::new(&config);
+        let inner = InnerPresenceDetector::new(&config)?;
         Ok(Self {
             radar,
             inner,
@@ -143,14 +145,16 @@ where
         let buffer_size = self.get_buffer_size()?;
         // The sensor is no longer prepared as before, even if this prepare fails
         self.radar.unprepare();
-        let prepare_success = acc_detector_presence_prepare(
-            self.inner.inner_mut(),
-            self.config.inner.as_ptr(),
-            self.radar.inner_sensor(),
-            sensor_cal_result.ptr(),
-            buffer.as_mut_ptr() as *mut c_void,
-            buffer.len() as u32,
-        );
+        let prepare_success = spi_checked(|| {
+            acc_detector_presence_prepare(
+                self.inner.inner_mut(),
+                self.config.inner.as_ptr(),
+                self.radar.inner_sensor(),
+                sensor_cal_result.ptr(),
+                buffer.as_mut_ptr() as *mut c_void,
+                buffer.len() as u32,
+            )
+        })?;
 
         if prepare_success {
             self.radar.mark_prepared(buffer_size);

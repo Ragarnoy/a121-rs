@@ -11,7 +11,7 @@ use alloc::vec::Vec;
 use core::ops::{Deref, DerefMut};
 
 use crate::config::RadarConfig;
-use crate::hal::{AccHalImpl, SDK_ALIGN};
+use crate::hal::{spi_checked, AccHalImpl, SDK_ALIGN};
 use crate::processing::{Processing, ProcessingResult};
 use crate::sensor::calibration::CalibrationResult;
 use crate::sensor::error::SensorError;
@@ -204,7 +204,7 @@ where
         let config = RadarConfig::new()?;
 
         // Create sensor after HAL is registered and sensor is stable
-        let sensor = Sensor::new(id, enable_pin, delay).ok_or(SensorError::InitFailed)?;
+        let sensor = Sensor::new(id, enable_pin, delay)?;
 
         Ok(Radar {
             id,
@@ -345,12 +345,21 @@ where
     ///
     /// If disabling fails, the sensor is hibernating but still powered; the radar is in the
     /// hibernating state either way, and [`Radar::hibernate_off`] wakes it.
+    ///
+    /// If an SPI transfer fails, the sensor may or may not be hibernating. The radar leaves the
+    /// ready state so it cannot measure; [`Radar::reset_sensor`] recovers it.
     pub async fn hibernate_on(&mut self) -> Result<(), SensorError> {
         if self.state != RadarState::Ready {
             return Err(SensorError::NotReady);
         }
 
-        self.sensor.hibernate_on()?;
+        if let Err(e) = self.sensor.hibernate_on() {
+            if e == SensorError::SpiTransferFailed {
+                self.prepared = Prepared::None;
+                self.state = RadarState::Enabled;
+            }
+            return Err(e);
+        }
         self.state = RadarState::Hibernating;
         self.sensor.disable_sensor().await
     }
@@ -397,13 +406,15 @@ where
     }
 
     /// Check if sensor is connected - available in any state
+    ///
+    /// Returns `false` if an SPI transfer failed while checking.
     pub fn is_connected(&self) -> bool {
-        unsafe { acc_sensor_connected(self.id as acc_sensor_id_t) }
+        spi_checked(|| unsafe { acc_sensor_connected(self.id as acc_sensor_id_t) }).unwrap_or(false)
     }
 
-    /// Check sensor status - available in any state
-    pub fn check_status(&self) {
-        self.sensor.check_status();
+    /// Logs the sensor status through the SDK logger - available in any state
+    pub fn check_status(&self) -> Result<(), SensorError> {
+        self.sensor.check_status()
     }
 
     /// Get raw sensor pointer - available in any state

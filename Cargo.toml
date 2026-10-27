@@ -24,6 +24,10 @@ embassy-sync = "0.8.0"
 num = { version = "0.4", default-features = false }
 libm = { version = "0.2.15", default-features = false, optional = true }
 
+[dev-dependencies]
+# Host tests lock the HAL's critical-section mutexes
+critical-section = { version = "1.1", features = ["std"] }
+
 [features]
 distance = ["a121-sys/distance"]
 presence = ["a121-sys/presence"]

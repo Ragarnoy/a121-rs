@@ -46,12 +46,20 @@ impl ProcessingMetaData {
         self.inner.sweep_data_length as usize
     }
 
-    pub fn subsweep_data_offset(&self, index: usize) -> usize {
-        self.inner.subsweep_data_offset[index] as usize
+    /// Offset of subsweep `index` in the frame, or `None` past the last possible subsweep.
+    pub fn subsweep_data_offset(&self, index: usize) -> Option<usize> {
+        self.inner
+            .subsweep_data_offset
+            .get(index)
+            .map(|&offset| offset as usize)
     }
 
-    pub fn subsweep_data_length(&self, index: usize) -> usize {
-        self.inner.subsweep_data_length[index] as usize
+    /// Length of subsweep `index` in the frame, or `None` past the last possible subsweep.
+    pub fn subsweep_data_length(&self, index: usize) -> Option<usize> {
+        self.inner
+            .subsweep_data_length
+            .get(index)
+            .map(|&length| length as usize)
     }
 
     pub fn max_sweep_rate(&self) -> f32 {

@@ -14,6 +14,7 @@ use core::ptr::NonNull;
 use a121_sys::*;
 
 use crate::config::profile::RadarProfile;
+use crate::sensor::error::SensorError;
 
 /// Type alias for the signal quality
 pub type SignalQuality = f32;
@@ -31,16 +32,18 @@ impl Drop for PresenceConfig {
     }
 }
 
-impl Default for PresenceConfig {
-    fn default() -> Self {
-        let ptr = unsafe { acc_detector_presence_config_create() };
-        Self {
-            inner: NonNull::new(ptr).expect("Failed to create presence config"),
-        }
-    }
-}
-
 impl PresenceConfig {
+    /// Creates a presence configuration with the SDK defaults.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SensorError::InitFailed`] if the SDK could not allocate it.
+    pub fn new() -> Result<Self, SensorError> {
+        let ptr = unsafe { acc_detector_presence_config_create() };
+        let inner = NonNull::new(ptr).ok_or(SensorError::InitFailed)?;
+        Ok(Self { inner })
+    }
+
     /// Sets the measurement range in meters.
     pub fn set_range(&mut self, range: RangeInclusive<f32>) {
         unsafe {
@@ -119,5 +122,19 @@ impl PresenceConfig {
             acc_detector_presence_config_intra_detection_set(self.inner.as_ptr(), intra_enable);
             acc_detector_presence_config_inter_detection_set(self.inner.as_ptr(), inter_enable);
         }
+    }
+}
+
+#[cfg(all(test, feature = "stub_library"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn create_failure_is_an_error() {
+        // The stub acc_detector_presence_config_create returns NULL
+        assert!(matches!(
+            PresenceConfig::new(),
+            Err(SensorError::InitFailed)
+        ));
     }
 }

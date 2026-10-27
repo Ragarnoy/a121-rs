@@ -12,6 +12,7 @@ use a121_sys::*;
 
 use crate::detector::distance::config::RadarDistanceConfig;
 use crate::detector::distance::results::DistanceSizes;
+use crate::hal::spi_checked;
 use crate::radar::{check_buffer, Radar, RadarState};
 use crate::sensor::calibration::CalibrationResult;
 use crate::sensor::error::{ProcessDataError, SensorError};
@@ -22,11 +23,10 @@ struct InnerRadarDistanceDetector {
 }
 
 impl InnerRadarDistanceDetector {
-    fn new(config: &RadarDistanceConfig) -> Self {
+    fn new(config: &RadarDistanceConfig) -> Result<Self, SensorError> {
         let ptr = unsafe { acc_detector_distance_create(config.inner.as_ptr()) };
-        Self {
-            inner: NonNull::new(ptr).expect("Failed to create distance detector"),
-        }
+        let inner = NonNull::new(ptr).ok_or(SensorError::InitFailed)?;
+        Ok(Self { inner })
     }
 
     fn inner(&self) -> *const acc_detector_distance_handle {
@@ -71,8 +71,8 @@ where
         if radar.state() != RadarState::Ready {
             return Err(SensorError::NotReady);
         }
-        let config = RadarDistanceConfig::default();
-        let inner = InnerRadarDistanceDetector::new(&config);
+        let config = RadarDistanceConfig::balanced()?;
+        let inner = InnerRadarDistanceDetector::new(&config)?;
         #[cfg(feature = "defmt")]
         defmt::trace!("{:?}", DistanceSizes::new(&inner).ok());
         Ok(Self {
@@ -91,7 +91,7 @@ where
         if radar.state() != RadarState::Ready {
             return Err(SensorError::NotReady);
         }
-        let inner = InnerRadarDistanceDetector::new(&config);
+        let inner = InnerRadarDistanceDetector::new(&config)?;
         #[cfg(feature = "defmt")]
         defmt::trace!("{:?}", DistanceSizes::new(&inner).ok());
         Ok(Self {
@@ -152,7 +152,7 @@ where
         }
 
         loop {
-            let calibration_attempt = unsafe {
+            let calibration_attempt = spi_checked(|| unsafe {
                 acc_detector_distance_calibrate(
                     self.radar.inner_sensor(),
                     self.inner.inner_mut(),
@@ -165,7 +165,7 @@ where
                         as *mut acc_detector_cal_result_dynamic_t,
                     &mut calibration_complete as *mut bool,
                 )
-            };
+            })?;
 
             // Check if the calibration attempt was successful
             if !calibration_attempt {
@@ -246,17 +246,20 @@ where
         // NO BUFFER SIZE CHECKS - caller must ensure buffers are large enough
 
         loop {
-            let calibration_attempt = acc_detector_distance_calibrate(
-                self.radar.inner_sensor(),
-                self.inner.inner_mut(),
-                sensor_cal_result.ptr(),
-                buffer.as_mut_ptr() as *mut c_void,
-                buffer.len() as u32,
-                detector_cal_result_static.as_mut_ptr(),
-                detector_cal_result_static.len() as u32,
-                &mut detector_cal_result_dynamic.inner as *mut acc_detector_cal_result_dynamic_t,
-                &mut calibration_complete as *mut bool,
-            );
+            let calibration_attempt = spi_checked(|| {
+                acc_detector_distance_calibrate(
+                    self.radar.inner_sensor(),
+                    self.inner.inner_mut(),
+                    sensor_cal_result.ptr(),
+                    buffer.as_mut_ptr() as *mut c_void,
+                    buffer.len() as u32,
+                    detector_cal_result_static.as_mut_ptr(),
+                    detector_cal_result_static.len() as u32,
+                    &mut detector_cal_result_dynamic.inner
+                        as *mut acc_detector_cal_result_dynamic_t,
+                    &mut calibration_complete as *mut bool,
+                )
+            })?;
 
             if !calibration_attempt {
                 return Err(SensorError::CalibrationFailed);
@@ -366,15 +369,18 @@ where
         let mut detector_cal_result_dynamic = DynamicResult::default();
 
         loop {
-            let calibration_attempt = acc_detector_distance_update_calibration(
-                self.radar.inner_sensor(),
-                self.inner.inner_mut(),
-                sensor_cal_result.ptr(),
-                buffer.as_mut_ptr() as *mut c_void,
-                buffer.len() as u32,
-                &mut detector_cal_result_dynamic.inner as *mut acc_detector_cal_result_dynamic_t,
-                &mut calibration_complete as *mut bool,
-            );
+            let calibration_attempt = spi_checked(|| {
+                acc_detector_distance_update_calibration(
+                    self.radar.inner_sensor(),
+                    self.inner.inner_mut(),
+                    sensor_cal_result.ptr(),
+                    buffer.as_mut_ptr() as *mut c_void,
+                    buffer.len() as u32,
+                    &mut detector_cal_result_dynamic.inner
+                        as *mut acc_detector_cal_result_dynamic_t,
+                    &mut calibration_complete as *mut bool,
+                )
+            })?;
 
             if !calibration_attempt {
                 return Err(SensorError::CalibrationFailed);
@@ -433,14 +439,16 @@ where
         let buffer_size = DistanceSizes::new(&self.inner)?.buffer_size;
         // The sensor is no longer prepared as before, even if this prepare fails
         self.radar.unprepare();
-        if acc_detector_distance_prepare(
-            self.inner.inner(),
-            self.config.inner.as_ptr(),
-            self.radar.inner_sensor(),
-            sensor_cal_result.ptr(),
-            buffer.as_mut_ptr() as *mut c_void,
-            buffer.len() as u32,
-        ) {
+        if spi_checked(|| {
+            acc_detector_distance_prepare(
+                self.inner.inner(),
+                self.config.inner.as_ptr(),
+                self.radar.inner_sensor(),
+                sensor_cal_result.ptr(),
+                buffer.as_mut_ptr() as *mut c_void,
+                buffer.len() as u32,
+            )
+        })? {
             self.radar.mark_prepared(buffer_size);
             Ok(())
         } else {
@@ -537,7 +545,7 @@ where
     }
 
     /// Prints the status of the radar distance detector.
-    pub fn print_status(&mut self) {
+    pub fn print_status(&mut self) -> Result<(), SensorError> {
         self.radar.check_status()
     }
 }

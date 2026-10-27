@@ -9,6 +9,11 @@ impl Hwaas {
     pub fn new(value: u16) -> Result<Self, ConfigError> {
         Self::try_from(value)
     }
+
+    /// Wraps a value read back from the SDK, which only stores 1..=511.
+    pub(crate) fn from_sdk(value: u16) -> Self {
+        Self(value.clamp(1, 511))
+    }
 }
 
 impl TryFrom<u16> for Hwaas {
@@ -40,5 +45,7 @@ mod tests {
         assert_eq!(u16::from(Hwaas::new(1).unwrap()), 1);
         assert_eq!(u16::from(Hwaas::new(511).unwrap()), 511);
         assert!(Hwaas::new(512).is_err());
+        assert_eq!(u16::from(Hwaas::from_sdk(0)), 1);
+        assert_eq!(u16::from(Hwaas::from_sdk(600)), 511);
     }
 }

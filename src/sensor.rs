@@ -10,6 +10,7 @@ use calibration::CalibrationResult;
 use error::SensorError;
 
 use crate::config::RadarConfig;
+use crate::hal::{spi_checked, with_spi_status};
 use a121_sys::*;
 
 pub mod calibration;
@@ -27,23 +28,26 @@ impl InnerSensor {
     /// # Safety
     /// - The sensor must be powered on before calling this function
     /// - The sensor must not be used in another sensor instance without a power/reset cycle
-    pub fn new(sensor_id: u32) -> Option<Self> {
-        let sensor_ptr = unsafe { acc_sensor_create(sensor_id as acc_sensor_id_t) };
-
-        NonNull::new(sensor_ptr)
-            .map(|inner| {
-                #[cfg(feature = "defmt")]
-                defmt::trace!("Successfully created sensor {}", sensor_id);
-                Self { inner }
-            })
-            .or_else(|| {
-                #[cfg(feature = "defmt")]
-                defmt::error!(
-                    "Failed to create sensor {}: acc_sensor_create returned null",
-                    sensor_id
-                );
-                None
-            })
+    pub fn new(sensor_id: u32) -> Result<Self, SensorError> {
+        let (sensor_ptr, spi_failed) =
+            with_spi_status(|| unsafe { acc_sensor_create(sensor_id as acc_sensor_id_t) });
+        let Some(inner) = NonNull::new(sensor_ptr) else {
+            #[cfg(feature = "defmt")]
+            defmt::error!("Failed to create sensor {}", sensor_id);
+            return Err(if spi_failed {
+                SensorError::SpiTransferFailed
+            } else {
+                SensorError::InitFailed
+            });
+        };
+        // Owning the pointer destroys a sensor created despite a failed transfer
+        let sensor = Self { inner };
+        if spi_failed {
+            return Err(SensorError::SpiTransferFailed);
+        }
+        #[cfg(feature = "defmt")]
+        defmt::trace!("Successfully created sensor {}", sensor_id);
+        Ok(sensor)
     }
 }
 
@@ -93,13 +97,14 @@ where
     /// # Arguments
     /// * `sensor_id` - The sensor ID to use for communication.
     ///
-    /// # Returns
-    /// `Some(Sensor)` if the sensor instance was successfully created, `None` otherwise.
-    pub fn new(sensor_id: u32, enable_pin: ENABLE, delay: DLY) -> Option<Self> {
+    /// # Errors
+    /// [`SensorError::InitFailed`] if the SDK could not create the sensor, or
+    /// [`SensorError::SpiTransferFailed`] if an SPI transfer failed while creating it.
+    pub fn new(sensor_id: u32, enable_pin: ENABLE, delay: DLY) -> Result<Self, SensorError> {
         #[cfg(feature = "defmt")]
         defmt::trace!("Creating sensor {}", sensor_id);
         let inner = InnerSensor::new(sensor_id)?;
-        Some(Self {
+        Ok(Self {
             inner,
             enable_pin,
             dly: delay,
@@ -139,7 +144,7 @@ where
         self.reset_sensor().await?;
 
         loop {
-            let calibration_attempt = unsafe {
+            let calibration_attempt = spi_checked(|| unsafe {
                 acc_sensor_calibrate(
                     self.inner.deref_mut(),
                     &mut calibration_complete as *mut bool,
@@ -147,7 +152,7 @@ where
                     buffer.as_mut_ptr() as *mut c_void,
                     buffer.len() as u32,
                 )
-            };
+            })?;
 
             // Check if the calibration attempt was successful
             if !calibration_attempt {
@@ -190,16 +195,15 @@ where
         cal_result: &mut CalibrationResult,
         buffer: &mut [u8],
     ) -> Result<(), SensorError> {
-        let ret;
-        unsafe {
-            ret = acc_sensor_prepare(
+        let ret = spi_checked(|| unsafe {
+            acc_sensor_prepare(
                 self.inner.deref_mut(),
                 config.ptr(),
                 cal_result.mut_ptr(),
                 buffer.as_mut_ptr() as *mut c_void,
                 buffer.len() as u32,
-            );
-        }
+            )
+        })?;
         if ret {
             #[cfg(feature = "defmt")]
             defmt::trace!("Sensor prepared");
@@ -209,10 +213,8 @@ where
         }
     }
 
-    pub fn check_status(&self) {
-        unsafe {
-            acc_sensor_status(self.inner.deref());
-        }
+    pub fn check_status(&self) -> Result<(), SensorError> {
+        spi_checked(|| unsafe { acc_sensor_status(self.inner.deref()) })
     }
 
     /// Prepares the sensor for entering hibernation.
@@ -222,10 +224,8 @@ where
     /// # Returns
     /// `Ok(())` if preparation was successful, `Err(SensorHibernationError)` otherwise.
     pub fn hibernate_on(&mut self) -> Result<(), SensorError> {
-        let ret_status: bool;
-        unsafe {
-            ret_status = acc_sensor_hibernate_on(self.inner.deref_mut());
-        }
+        let ret_status =
+            spi_checked(|| unsafe { acc_sensor_hibernate_on(self.inner.deref_mut()) })?;
         if ret_status {
             Ok(())
         } else {
@@ -240,10 +240,7 @@ where
     /// # Returns
     /// `Ok(())` if unpreparation was successful, `Err(SensorHibernationError)` otherwise.
     pub fn hibernate_off(&self) -> Result<(), SensorError> {
-        let ret_status: bool;
-        unsafe {
-            ret_status = acc_sensor_hibernate_off(self.inner.deref());
-        }
+        let ret_status = spi_checked(|| unsafe { acc_sensor_hibernate_off(self.inner.deref()) })?;
         if ret_status {
             Ok(())
         } else {
@@ -253,7 +250,7 @@ where
 
     pub async fn measure<SINT: Wait>(&mut self, mut interrupt: SINT) -> Result<(), SensorError> {
         // Implementation to start the radar measurement
-        let success = unsafe { acc_sensor_measure(self.inner.deref_mut()) };
+        let success = spi_checked(|| unsafe { acc_sensor_measure(self.inner.deref_mut()) })?;
         if success {
             interrupt
                 .wait_for_high()
@@ -283,13 +280,13 @@ where
     /// `Ok(())` if data was successfully read into the buffer, `Err(SensorError)` otherwise.
     pub fn read(&self, buffer: &mut [u8]) -> Result<(), SensorError> {
         // Implementation to read the radar data
-        let success = unsafe {
+        let success = spi_checked(|| unsafe {
             acc_sensor_read(
                 self.inner.deref(),
                 buffer.as_mut_ptr() as *mut c_void,
                 buffer.len() as u32,
             )
-        };
+        })?;
         if success {
             Ok(())
         } else {

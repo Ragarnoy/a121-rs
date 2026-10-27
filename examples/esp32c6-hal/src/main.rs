@@ -106,7 +106,7 @@ async fn main(_spawner: Spawner) {
     radar.prepare_sensor(&mut calibration).unwrap();
     log::info!("Radar calibrated and prepared.");
 
-    let mut distance_config = RadarDistanceConfig::default();
+    let mut distance_config = RadarDistanceConfig::balanced().unwrap();
     distance_config.set_interval(0.2..=3.0);
     distance_config.set_max_step_length(MaxStepLenght::ProfileBased);
     distance_config.set_max_profile(AccProfile5);
