@@ -102,6 +102,12 @@ where
         })
     }
 
+    /// Returns the state of the detector's radar, for example to see whether it is
+    /// [faulted](RadarState::Faulted) and needs [`calibrate`](Self::calibrate).
+    pub fn radar_state(&self) -> RadarState {
+        self.radar.state()
+    }
+
     pub fn presence_metadata(&self) -> &PresenceMetadata {
         self.inner.presence_metadata()
     }
@@ -113,6 +119,9 @@ where
     ///
     /// # Errors
     ///
+    /// Returns [`SensorError::NotReady`] if the radar is hibernating or
+    /// [faulted](crate::radar::RadarState::Faulted); see [`radar_state`](Self::radar_state).
+    /// An SPI failure faults the radar.
     /// Returns [`SensorError::BufferTooSmall`] if buffer is too small.
     /// Returns [`SensorError::BufferMisaligned`] if `buffer` is not aligned for any built-in
     /// type; see [`AlignedBuffer`](crate::AlignedBuffer).
@@ -142,10 +151,11 @@ where
         sensor_cal_result: &CalibrationResult,
         buffer: &mut [u8],
     ) -> Result<(), SensorError> {
+        self.radar.check_awake()?;
         let buffer_size = self.get_buffer_size()?;
         // The sensor is no longer prepared as before, even if this prepare fails
         self.radar.unprepare();
-        let prepare_success = spi_checked(|| {
+        let prepared = spi_checked(|| {
             acc_detector_presence_prepare(
                 self.inner.inner_mut(),
                 self.config.inner.as_ptr(),
@@ -154,9 +164,9 @@ where
                 buffer.as_mut_ptr() as *mut c_void,
                 buffer.len() as u32,
             )
-        })?;
+        });
 
-        if prepare_success {
+        if self.radar.fault_on_spi_error(prepared)? {
             self.radar.mark_prepared(buffer_size);
             Ok(())
         } else {
