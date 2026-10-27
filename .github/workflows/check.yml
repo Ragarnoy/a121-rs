@@ -110,9 +110,9 @@ jobs:
       - name: cargo install cargo-hack
         uses: taiki-e/install-action@cargo-hack
       # A test binary links the stub libraries, unlike `cargo check`.
-      # defmt needs a global logger to link, and nightly-logger implies defmt.
+      # defmt needs a global logger to link, and logger/nightly-logger imply defmt.
       - name: cargo hack test
-        run: cargo hack --feature-powerset --features stub_library --exclude-features nightly-logger,defmt test
+        run: cargo hack --feature-powerset --features stub_library --exclude-features logger,nightly-logger,defmt test
   nostd:
     runs-on: ubuntu-latest
     name: ${{ matrix.target }} / stub check
@@ -142,7 +142,7 @@ jobs:
     # https://docs.github.com/en/actions/learn-github-actions/contexts#context-availability
     strategy:
       matrix:
-        msrv: ["1.82"]
+        msrv: ["1.99"]
     name: ubuntu / ${{ matrix.msrv }}
     steps:
       - uses: actions/checkout@v4

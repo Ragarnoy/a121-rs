@@ -27,7 +27,7 @@ jobs:
       - name: cargo generate-lockfile
         if: hashFiles('Cargo.lock') == ''
         run: cargo generate-lockfile
-      # defmt (and nightly-logger, which implies it) needs a global logger to link on the host
+      # defmt (and logger/nightly-logger, which imply it) needs a global logger to link on the host
       - name: cargo test --locked
         run: cargo test --locked --features stub_library,distance,presence,libm --all-targets
   # https://twitter.com/alcuadrado/status/1571291687837732873

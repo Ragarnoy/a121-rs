@@ -10,7 +10,7 @@ readme = "README.md"
 license = "MIT"
 edition = "2021"
 version = "0.3.0"
-rust-version = "1.82"
+rust-version = "1.99"
 
 [dependencies]
 a121-sys = "0.8.0"
@@ -19,7 +19,7 @@ defmt = { version = "1.0.1", optional = true }
 
 embedded-hal = "1.0.0"
 embedded-hal-async = "1.0.0"
-embassy-sync = "0.7.2"
+embassy-sync = "0.8.0"
 
 num = { version = "0.4", default-features = false }
 libm = { version = "0.2.15", default-features = false, optional = true }
@@ -28,8 +28,11 @@ libm = { version = "0.2.15", default-features = false, optional = true }
 distance = ["a121-sys/distance"]
 presence = ["a121-sys/presence"]
 libm = ["dep:libm", "num/libm"]
+# Log SDK messages through a Rust variadic function instead of the C logging bridge.
 # Recommended if you don't want to have to link a huge chunk of newlib
-nightly-logger = ["defmt"]
+logger = ["defmt"]
+# Deprecated alias for `logger`, kept for compatibility. Variadic functions are stable since Rust 1.99.
+nightly-logger = ["logger"]
 std = ["a121-sys/std"]
 defmt = ["dep:defmt", "embassy-sync/defmt"]
 # Link against generated stub libraries instead of the Acconeer SDK (host builds and tests)

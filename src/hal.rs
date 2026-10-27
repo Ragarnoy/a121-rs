@@ -52,9 +52,9 @@ impl AccHalImpl {
             mem_alloc: Some(mem_alloc),
             mem_free: Some(mem_free),
             transfer: Some(Self::transfer8_function),
-            #[cfg(feature = "nightly-logger")]
+            #[cfg(feature = "logger")]
             log: Some(logger),
-            #[cfg(not(feature = "nightly-logger"))]
+            #[cfg(not(feature = "logger"))]
             log: Some(a121_sys::c_log_stub),
             optimization: acc_hal_optimization_t { transfer16: None },
         };
@@ -202,7 +202,7 @@ unsafe extern "C" fn mem_free(ptr: *mut c_void) {
     dealloc(base, layout);
 }
 
-#[cfg(feature = "nightly-logger")]
+#[cfg(feature = "logger")]
 unsafe extern "C" fn logger(
     level: a121_sys::acc_log_level_t,
     module: *const c_char,
@@ -223,7 +223,7 @@ unsafe extern "C" fn logger(
     }
 }
 
-#[cfg(not(feature = "nightly-logger"))]
+#[cfg(not(feature = "logger"))]
 /// This function is called by the C stub to log messages from the SDK.
 /// # Safety
 /// This function is unsafe because it takes a raw pointer.

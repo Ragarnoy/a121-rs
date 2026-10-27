@@ -63,7 +63,8 @@ See the [documentation](https://docs.rs/a121-rs) for detailed usage instructions
 | distance       | Enable distance measurement module                                                                                           |
 | presence       | Enable presence detection module                                                                                             |
 | libm           | Use libm crate for floating point operations                                                                                 |
-| nightly-logger | If the C wrapper for logging does not compile with stable rust, enable this feature to use nightly rust with a custom logger |
+| logger         | Log SDK messages through a Rust logger (defmt) instead of the C logging bridge, avoiding newlib's `vsnprintf`                 |
+| nightly-logger | Deprecated alias for `logger`                                                                                                |
 | defmt          | Log through defmt and derive `defmt::Format` on public types                                                                 |
 | std            | Enable `std` in a121-sys                                                                                                     |
 | stub_library   | Link against generated stub libraries instead of the Acconeer SDK, for host builds and tests without the real libraries      |

@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   libraries are only linked when requested. Previously both were always linked.
 - The `std` feature now enables `a121-sys/std`.
 - `embassy-sync/defmt` is only enabled by the `defmt` feature.
+- **Breaking:** minimum supported Rust version is 1.99 (was 1.82). Variadic functions are stable since
+  1.99, so the Rust logger no longer needs nightly.
+- Updated embassy-sync to 0.8.
+- The `nightly-logger` feature is deprecated in favour of `logger`, and is kept as an alias.
 - docs.rs builds the crate against the a121-sys stub libraries. It could not build it before.
 - **Breaking:** `RadarDistanceDetector::get_distance_buffer_size`, `get_static_result_buffer_size`
   and `PresenceDetector::get_buffer_size` return `Result<usize, SensorError>`. They no longer read
@@ -30,6 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the profile.
 
 ### Added
+- `logger` feature: log SDK messages through a Rust variadic function (defmt) instead of the C logging
+  bridge, on stable Rust.
 - `stub_library` feature, which forwards to `a121-sys/stub_library` so the crate can be built and
   tested on the host without the Acconeer libraries.
 - `SensorError`, `ProcessDataError`, `CalibrationResult` and `CalibrationInfo` are re-exported from the
