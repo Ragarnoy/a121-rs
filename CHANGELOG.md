@@ -64,7 +64,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ProcessingMetaData::new` and `mut_ptr`, `RssVersion::new`, `MemoryRequirements::new`,
   `DistanceResult::new`, `PresenceResult::new` (use `Default`), `PresenceConfig::inner`, and the
   `radar` and `config` fields of `RadarDistanceDetector` and `PresenceDetector`. Removed the unused
-  `ProcessingMetaData::ptr` and `PresenceMetadata::new`.
+  `ProcessingMetaData::ptr` and `PresenceMetadata::new`. `PresenceDetector::measure` and `calibrate`
+  replace access through the `radar` field, as on `RadarDistanceDetector`.
 
 ### Added
 - `logger` feature: log SDK messages through a Rust variadic function (defmt) instead of the C logging
@@ -107,7 +108,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Creating a distance or presence detector panicked when the SDK returned NULL. It returns
   `SensorError::InitFailed`.
 - `RadarConfig::hwaas()` and distance results could panic on unexpected SDK values.
-
 - `Hwaas` accepted 0. The SDK range is 1–511.
 - `RadarDistanceDetector::update_calibration` ignored SDK failures after the first step and could wait
   forever.
