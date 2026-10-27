@@ -65,8 +65,11 @@ impl<'a> DistanceResult<'a> {
 
     /// Updates the result from the FFI struct returned by the SDK.
     pub(super) fn update_from_detector_result(&mut self, inner: acc_detector_distance_result_t) {
-        self.num_distances = inner.num_distances;
-        for i in 0..inner.num_distances as usize {
+        // Never trust the count beyond the array size
+        self.num_distances = inner
+            .num_distances
+            .min(ACC_DETECTOR_DISTANCE_RESULT_MAX_NUM_DISTANCES as u8);
+        for i in 0..self.num_distances as usize {
             self.distances[i].distance = inner.distances[i];
             self.distances[i].strength = inner.strengths[i];
         }

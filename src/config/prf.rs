@@ -55,6 +55,12 @@ impl TryFrom<acc_config_prf_t> for PulseRepetitionFrequency {
 }
 
 impl PulseRepetitionFrequency {
+    /// Converts a value read back from the SDK, falling back to the SDK default of 15.6 MHz for
+    /// a value the SDK never stores.
+    pub(crate) fn from_sdk(value: acc_config_prf_t) -> Self {
+        Self::try_from(value).unwrap_or(Self::Prf15_6Mhz)
+    }
+
     /// Returns the PRF value in Hz.
     pub const fn value(&self) -> u32 {
         match self {

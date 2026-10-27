@@ -225,9 +225,7 @@ impl RadarConfig {
     ///
     /// Returns the number of hardware accelerated average samples currently set.
     pub fn hwaas(&self) -> Hwaas {
-        unsafe { acc_config_hwaas_get(self.inner.as_ptr()) }
-            .try_into()
-            .unwrap()
+        Hwaas::from_sdk(unsafe { acc_config_hwaas_get(self.inner.as_ptr()) })
     }
 
     /// Set the receiver gain setting.
@@ -279,9 +277,7 @@ impl RadarConfig {
     ///
     /// Returns the currently set Pulse Repetition Frequency.
     pub fn prf(&self) -> PulseRepetitionFrequency {
-        unsafe { acc_config_prf_get(self.inner.as_ptr()) }
-            .try_into()
-            .unwrap()
+        PulseRepetitionFrequency::from_sdk(unsafe { acc_config_prf_get(self.inner.as_ptr()) })
     }
 
     /// Enable or disable phase enhancement

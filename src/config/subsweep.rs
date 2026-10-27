@@ -90,13 +90,7 @@ impl Subsweep {
 
     /// Gets Hardware accelerated average samples for subsweep
     pub fn hwaas(&self, config: &RadarConfig) -> Hwaas {
-        unsafe {
-            Hwaas::try_from(acc_config_subsweep_hwaas_get(
-                config.inner.as_ptr(),
-                self.index,
-            ))
-            .unwrap()
-        }
+        Hwaas::from_sdk(unsafe { acc_config_subsweep_hwaas_get(config.inner.as_ptr(), self.index) })
     }
 
     /// Sets receiver gain for subsweep
@@ -138,7 +132,7 @@ impl Subsweep {
     /// Gets Pulse Repetition Frequency for subsweep
     pub fn prf(&self, config: &RadarConfig) -> PulseRepetitionFrequency {
         let prf_val = unsafe { acc_config_subsweep_prf_get(config.inner.as_ptr(), self.index) };
-        PulseRepetitionFrequency::try_from(prf_val).unwrap()
+        PulseRepetitionFrequency::from_sdk(prf_val)
     }
 
     /// Set the phase enhancement enabled configuration

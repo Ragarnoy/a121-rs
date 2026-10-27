@@ -15,6 +15,7 @@ use a121_sys::*;
 
 use crate::config::profile::RadarProfile;
 use crate::config::profile::RadarProfile::AccProfile5;
+use crate::sensor::error::SensorError;
 
 /// Type alias for the signal quality
 pub type SignalQuality = f32;
@@ -116,24 +117,21 @@ impl Drop for RadarDistanceConfig {
     }
 }
 
-impl Default for RadarDistanceConfig {
-    fn default() -> Self {
-        Self::balanced()
-    }
-}
-
 impl RadarDistanceConfig {
     /// Create a new distance detection configuration.
-    fn new() -> Self {
+    fn new() -> Result<Self, SensorError> {
         let ptr = unsafe { acc_detector_distance_config_create() };
-        Self {
-            inner: NonNull::new(ptr).expect("Failed to create distance config"),
-        }
+        let inner = NonNull::new(ptr).ok_or(SensorError::InitFailed)?;
+        Ok(Self { inner })
     }
 
     /// Create a balanced distance detection configuration.
-    pub fn balanced() -> Self {
-        let mut config = Self::new();
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SensorError::InitFailed`] if the SDK could not allocate it.
+    pub fn balanced() -> Result<Self, SensorError> {
+        let mut config = Self::new()?;
         config.set_interval(0.5..=2.1);
         config.set_max_step_length(MaxStepLenght::ProfileBased);
         config.set_max_profile(AccProfile5);
@@ -143,7 +141,7 @@ impl RadarDistanceConfig {
         config.set_threshold_sensitivity(0.5);
         config.set_signal_quality(15.0);
         config.set_close_range_leakage_cancelation(false);
-        config
+        Ok(config)
     }
 
     /// Configures the measurement interval in meters.
@@ -323,5 +321,19 @@ impl RadarDistanceConfig {
     /// Returns the reflector shape.
     pub fn reflector_shape(&self) -> ReflectorShape {
         unsafe { acc_detector_distance_config_reflector_shape_get(self.inner.as_ptr()) }.into()
+    }
+}
+
+#[cfg(all(test, feature = "stub_library"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn create_failure_is_an_error() {
+        // The stub acc_detector_distance_config_create returns NULL
+        assert!(matches!(
+            RadarDistanceConfig::balanced(),
+            Err(SensorError::InitFailed)
+        ));
     }
 }

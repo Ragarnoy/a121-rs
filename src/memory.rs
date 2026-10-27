@@ -438,11 +438,10 @@ impl<'a> SessionMemoryCalculator<'a> {
         let num_subsweeps = self.config.num_subsweep() as usize;
         let sweeps_per_frame = self.config.sweeps_per_frame() as usize;
 
-        let mut total_points = 0;
-        for i in 0..num_subsweeps {
-            let subsweep = self.config.get_subsweep(i as u8).unwrap();
-            total_points += subsweep.num_points(self.config) as usize;
-        }
+        let total_points: usize = (0..num_subsweeps as u8)
+            .filter_map(|i| self.config.get_subsweep(i))
+            .map(|subsweep| subsweep.num_points(self.config) as usize)
+            .sum();
 
         total_points * sweeps_per_frame
     }
@@ -486,11 +485,10 @@ impl<'a> PresenceMemoryCalculator<'a> {
     /// Calculates total number of points for presence detection
     fn total_num_points(&self) -> usize {
         let num_subsweeps = self.config.num_subsweep() as usize;
-        let mut total_points = 0;
-        for i in 0..num_subsweeps {
-            let subsweep = self.config.get_subsweep(i as u8).unwrap();
-            total_points += subsweep.num_points(self.config) as usize;
-        }
+        let total_points: usize = (0..num_subsweeps as u8)
+            .filter_map(|i| self.config.get_subsweep(i))
+            .map(|subsweep| subsweep.num_points(self.config) as usize)
+            .sum();
         total_points
     }
 
@@ -553,11 +551,10 @@ impl<'a> DistanceMemoryCalculator<'a> {
     /// Calculates total number of points for distance detection
     fn total_num_points(&self) -> usize {
         let num_subsweeps = self.config.num_subsweep() as usize;
-        let mut total_points = 0;
-        for i in 0..num_subsweeps {
-            let subsweep = self.config.get_subsweep(i as u8).unwrap();
-            total_points += subsweep.num_points(self.config) as usize;
-        }
+        let total_points: usize = (0..num_subsweeps as u8)
+            .filter_map(|i| self.config.get_subsweep(i))
+            .map(|subsweep| subsweep.num_points(self.config) as usize)
+            .sum();
         total_points
     }
 

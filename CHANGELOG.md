@@ -44,6 +44,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `AlignedBuffer`). `measure` also requires the buffer size of the prepared configuration or detector.
 - **Breaking:** removed `PREPARE_BUFFER_SIZE`. The scratch buffer is checked against
   `RadarConfig::config_buffer_size()` at runtime instead.
+- **Breaking:** `RadarDistanceConfig::balanced()` returns `Result`, and `RadarDistanceConfig` no longer
+  implements `Default`. `PresenceConfig::new()` replaces `PresenceConfig::default()`. Both fail with
+  `SensorError::InitFailed` instead of panicking when the SDK cannot allocate the configuration.
+- **Breaking:** `ProcessingMetaData::subsweep_data_offset` and `subsweep_data_length` return
+  `Option<usize>` instead of panicking on an out-of-range index.
 - The xe125 example links newlib's `sinf`, `cosf` and `tanf` instead of the compiler_builtins ones,
   which saves about 10 KB of flash, and logs at `info` level by default.
 
@@ -58,6 +63,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   crate root. They appear in public signatures but were not nameable before.
 - Host unit tests, run against the stub libraries.
 - `RadarBuffer<N>` and `AlignedBuffer`: byte buffers aligned as the SDK requires.
+- `SensorError::SpiTransferFailed`: an SPI transfer failed during the SDK call. The SDK's transfer
+  callback cannot return an error, so the failure is recorded and checked after each SDK call that
+  talks to the sensor, which then fails even if the SDK reported success.
 - `SensorError::BufferMisaligned`, `SensorError::EnablePinFailed` and
   `ProcessDataError::BufferMisaligned`.
 
@@ -80,6 +88,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - An enable pin or interrupt error panicked instead of returning an error, including in the distance
   detector's calibration.
 - A failed detector prepare left the radar ready with its previous preparation.
+- Creating a distance or presence detector panicked when the SDK returned NULL. It returns
+  `SensorError::InitFailed`.
+- `RadarConfig::hwaas()` and distance results could panic on unexpected SDK values.
+
+### Removed
+- The unused 16-bit SPI transfer callback, which contained `todo!()`.
 - `Hwaas` accepted 0. The SDK range is 1–511.
 - `RadarDistanceDetector::update_calibration` ignored SDK failures after the first step and could wait
   forever.

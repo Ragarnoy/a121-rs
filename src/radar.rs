@@ -11,7 +11,7 @@ use alloc::vec::Vec;
 use core::ops::{Deref, DerefMut};
 
 use crate::config::RadarConfig;
-use crate::hal::{AccHalImpl, SDK_ALIGN};
+use crate::hal::{spi_checked, AccHalImpl, SDK_ALIGN};
 use crate::processing::{Processing, ProcessingResult};
 use crate::sensor::calibration::CalibrationResult;
 use crate::sensor::error::SensorError;
@@ -204,7 +204,7 @@ where
         let config = RadarConfig::new()?;
 
         // Create sensor after HAL is registered and sensor is stable
-        let sensor = Sensor::new(id, enable_pin, delay).ok_or(SensorError::InitFailed)?;
+        let sensor = Sensor::new(id, enable_pin, delay)?;
 
         Ok(Radar {
             id,
@@ -397,8 +397,10 @@ where
     }
 
     /// Check if sensor is connected - available in any state
+    ///
+    /// Returns `false` if an SPI transfer failed while checking.
     pub fn is_connected(&self) -> bool {
-        unsafe { acc_sensor_connected(self.id as acc_sensor_id_t) }
+        spi_checked(|| unsafe { acc_sensor_connected(self.id as acc_sensor_id_t) }).unwrap_or(false)
     }
 
     /// Check sensor status - available in any state

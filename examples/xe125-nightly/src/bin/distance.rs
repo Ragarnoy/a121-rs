@@ -90,7 +90,7 @@ async fn main(_spawner: Spawner) {
 
     radar.prepare_sensor(&mut calibration).unwrap();
 
-    let mut dist_config = RadarDistanceConfig::balanced();
+    let mut dist_config = RadarDistanceConfig::balanced().unwrap();
     dist_config.set_interval(0.7..=1.5);
     let mut distance = RadarDistanceDetector::with_config(&mut radar, dist_config).unwrap();
     let mut buffer = AlignedBuffer::new(distance.get_distance_buffer_size().unwrap());
