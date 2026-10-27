@@ -38,7 +38,8 @@ impl CalibrationResult {
     }
 
     /// Returns a pointer to the inner `acc_cal_result_t` struct, for SDK calls the wrapper does not
-    /// cover, together with [`Radar::inner_sensor`](crate::radar::Radar::inner_sensor).
+    /// cover, together with [`Radar::inner_sensor`](crate::radar::Radar::inner_sensor). Such calls
+    /// bypass the SPI failure checks and the radar's state tracking.
     pub fn ptr(&self) -> *const acc_cal_result_t {
         &self.inner
     }

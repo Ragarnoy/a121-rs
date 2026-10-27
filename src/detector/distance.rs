@@ -212,50 +212,37 @@ where
         buffer: &mut [u8],
         detector_cal_result_static: &mut [u8],
     ) -> Result<DynamicResult, SensorError> {
-        let mut calibration_complete: bool = false;
         let mut detector_cal_result_dynamic = DynamicResult::default();
+        let sensor = self.radar.inner_sensor();
+        let inner = &mut self.inner;
 
         // NO BUFFER SIZE CHECKS - caller must ensure buffers are large enough
-
-        self.radar.check_awake()?;
-        // Calibration measures with the detector's own sensor configurations
-        self.radar.unprepare();
-        loop {
-            let calibration_attempt = spi_checked(|| {
-                acc_detector_distance_calibrate(
-                    self.radar.inner_sensor(),
-                    self.inner.inner_mut(),
-                    sensor_cal_result.ptr(),
-                    buffer.as_mut_ptr() as *mut c_void,
-                    buffer.len() as u32,
-                    detector_cal_result_static.as_mut_ptr(),
-                    detector_cal_result_static.len() as u32,
-                    &mut detector_cal_result_dynamic.inner
-                        as *mut acc_detector_cal_result_dynamic_t,
-                    &mut calibration_complete as *mut bool,
-                )
-            });
-            // A failure can leave the sensor measuring
-            self.radar.fault_on_error(
-                calibration_attempt.and_then(|success| {
-                    success.then_some(()).ok_or(SensorError::CalibrationFailed)
-                }),
-            )?;
-
-            if calibration_complete {
-                break;
-            }
-
-            let waited = self
-                .radar
-                .interrupt
-                .wait_for_high()
-                .await
-                .map_err(|_| SensorError::CalibrationFailed);
-            self.radar.fault_on_error(waited)?;
-        }
+        self.radar
+            .run_detector_calibration(|calibration_complete| {
+                spi_checked(|| {
+                    acc_detector_distance_calibrate(
+                        sensor,
+                        inner.inner_mut(),
+                        sensor_cal_result.ptr(),
+                        buffer.as_mut_ptr() as *mut c_void,
+                        buffer.len() as u32,
+                        detector_cal_result_static.as_mut_ptr(),
+                        detector_cal_result_static.len() as u32,
+                        &mut detector_cal_result_dynamic.inner
+                            as *mut acc_detector_cal_result_dynamic_t,
+                        calibration_complete as *mut bool,
+                    )
+                })
+            })
+            .await?;
 
         Ok(detector_cal_result_dynamic)
+    }
+
+    /// Returns the state of the detector's radar, for example to see whether it is
+    /// [faulted](RadarState::Faulted) and needs [`calibrate`](Self::calibrate).
+    pub fn radar_state(&self) -> RadarState {
+        self.radar.state()
     }
 
     /// Returns the size of the buffer needed for static calibration results.
@@ -347,45 +334,26 @@ where
         sensor_cal_result: &CalibrationResult,
         buffer: &mut [u8],
     ) -> Result<DynamicResult, SensorError> {
-        let mut calibration_complete: bool = false;
         let mut detector_cal_result_dynamic = DynamicResult::default();
+        let sensor = self.radar.inner_sensor();
+        let inner = &mut self.inner;
 
-        self.radar.check_awake()?;
-        // Calibration measures with the detector's own sensor configurations
-        self.radar.unprepare();
-        loop {
-            let calibration_attempt = spi_checked(|| {
-                acc_detector_distance_update_calibration(
-                    self.radar.inner_sensor(),
-                    self.inner.inner_mut(),
-                    sensor_cal_result.ptr(),
-                    buffer.as_mut_ptr() as *mut c_void,
-                    buffer.len() as u32,
-                    &mut detector_cal_result_dynamic.inner
-                        as *mut acc_detector_cal_result_dynamic_t,
-                    &mut calibration_complete as *mut bool,
-                )
-            });
-            // A failure can leave the sensor measuring
-            self.radar.fault_on_error(
-                calibration_attempt.and_then(|success| {
-                    success.then_some(()).ok_or(SensorError::CalibrationFailed)
-                }),
-            )?;
-
-            if calibration_complete {
-                break;
-            }
-
-            // Wait for the interrupt to occur asynchronously
-            let waited = self
-                .radar
-                .interrupt
-                .wait_for_high()
-                .await
-                .map_err(|_| SensorError::CalibrationFailed);
-            self.radar.fault_on_error(waited)?;
-        }
+        self.radar
+            .run_detector_calibration(|calibration_complete| {
+                spi_checked(|| {
+                    acc_detector_distance_update_calibration(
+                        sensor,
+                        inner.inner_mut(),
+                        sensor_cal_result.ptr(),
+                        buffer.as_mut_ptr() as *mut c_void,
+                        buffer.len() as u32,
+                        &mut detector_cal_result_dynamic.inner
+                            as *mut acc_detector_cal_result_dynamic_t,
+                        calibration_complete as *mut bool,
+                    )
+                })
+            })
+            .await?;
 
         Ok(detector_cal_result_dynamic)
     }
@@ -429,7 +397,7 @@ where
         let buffer_size = DistanceSizes::new(&self.inner)?.buffer_size;
         // The sensor is no longer prepared as before, even if this prepare fails
         self.radar.unprepare();
-        if spi_checked(|| {
+        let prepared = spi_checked(|| {
             acc_detector_distance_prepare(
                 self.inner.inner(),
                 self.config.inner.as_ptr(),
@@ -438,7 +406,8 @@ where
                 buffer.as_mut_ptr() as *mut c_void,
                 buffer.len() as u32,
             )
-        })? {
+        });
+        if self.radar.fault_on_spi_error(prepared)? {
             self.radar.mark_prepared(buffer_size);
             Ok(())
         } else {
