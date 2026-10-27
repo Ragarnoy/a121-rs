@@ -128,8 +128,11 @@ impl RadarConfig {
     pub fn set_sweep_mode(&mut self, sweep_mode: SweepMode) -> Result<(), ConfigError> {
         match sweep_mode {
             SweepMode::Continuous { sweep_rate } => {
-                // Continuous mode requires a sweep rate > 0 and an unlimited frame rate,
-                // so both must be set before enabling it
+                // Continuous mode requires a sweep rate > 0, an unlimited frame rate and equal
+                // idle states. Check what can fail first so an error leaves the config unchanged.
+                if self.inter_frame_idle_state() != self.inter_sweep_idle_state() {
+                    return Err(ContinuousSweepMode);
+                }
                 self.set_sweep_rate(sweep_rate)?;
                 self.set_frame_rate(FrameRate::Unlimited);
                 self.set_continuous_sweep_mode(true)?;
