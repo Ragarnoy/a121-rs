@@ -36,3 +36,18 @@ impl From<u32> for RadarProfile {
         Self::from_ffi(value).unwrap_or(RadarProfile::AccProfile1)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ffi_round_trip() {
+        for raw in 1..=5u32 {
+            let profile = RadarProfile::from_ffi(raw).unwrap();
+            assert_eq!(profile as u32, raw);
+        }
+        assert_eq!(RadarProfile::from_ffi(0), None);
+        assert_eq!(RadarProfile::from(6), RadarProfile::AccProfile1);
+    }
+}

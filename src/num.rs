@@ -84,3 +84,21 @@ impl Points {
         Self { points }
     }
 }
+
+#[cfg(all(test, feature = "stub_library"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn complex_round_trip() {
+        let acc: AccComplex = Complex::new(-3i16, 7).into();
+        assert_eq!(Complex::<i16>::from(acc), Complex::new(-3, 7));
+    }
+
+    #[test]
+    fn points_conversion_calls_sdk() {
+        // Stub values: points_to_meter returns 0.1, meter_to_points returns 0
+        assert!(Points::new(100).to_meters().is_finite());
+        let _ = Points::meters_to_points(1.0).points;
+    }
+}
