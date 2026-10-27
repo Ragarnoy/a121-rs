@@ -118,8 +118,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Creating a distance or presence detector panicked when the SDK returned NULL. It returns
   `SensorError::InitFailed`.
 - `RadarConfig::hwaas()` and distance results could panic on unexpected SDK values. An HWAAS or PRF
-  value the SDK never stores now fails a debug assertion, and in release builds is logged (with
-  `defmt`) and clamped or replaced by the SDK default.
+  value the SDK never stores now fails a debug assertion (except with `stub_library`, whose getters
+  return 0), and otherwise is logged (with `defmt`) and clamped or replaced by the SDK default.
 - `Hwaas` accepted 0. The SDK range is 1–511.
 - `RadarDistanceDetector::update_calibration` ignored SDK failures after the first step and could wait
   forever.

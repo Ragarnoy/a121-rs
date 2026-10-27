@@ -103,7 +103,8 @@ where
     }
 
     /// Returns the state of the detector's radar, for example to see whether it is
-    /// [faulted](RadarState::Faulted) and needs [`calibrate`](Self::calibrate).
+    /// [faulted](RadarState::Faulted). Recover it with [`calibrate`](Self::calibrate), which also
+    /// gives a fresh sensor calibration, then prepare the detector again.
     pub fn radar_state(&self) -> RadarState {
         self.radar.state()
     }
@@ -218,7 +219,9 @@ where
     }
 
     /// Power-cycles the sensor, which recovers a [faulted](RadarState::Faulted) radar. The
-    /// detector must be prepared again before measuring.
+    /// detector must be prepared again before measuring. To recover from a fault,
+    /// [`calibrate`](Self::calibrate) is usually better: it power-cycles too, and gives a fresh
+    /// sensor calibration instead of reusing one taken before the fault.
     ///
     /// See [`Radar::reset_sensor`](crate::radar::Radar::reset_sensor).
     pub async fn reset_sensor(&mut self) -> Result<(), SensorError> {

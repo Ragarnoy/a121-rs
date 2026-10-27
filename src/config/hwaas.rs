@@ -12,11 +12,15 @@ impl Hwaas {
 
     /// Wraps a value read back from the SDK, which only stores 1..=511.
     ///
-    /// Any other value means a corrupted configuration or mismatched bindings: it fails a debug
-    /// assertion, and in release builds it is logged and clamped.
+    /// Any other value means a corrupted configuration, mismatched bindings, or a subsweep index
+    /// the configuration does not have: it fails a debug assertion, and otherwise it is logged
+    /// and clamped. The stub library returns 0 for every getter, so it skips the assertion.
     pub(crate) fn from_sdk(value: u16) -> Self {
         let valid = (1..=511).contains(&value);
-        debug_assert!(valid, "SDK returned HWAAS {value} outside 1..=511");
+        debug_assert!(
+            valid || cfg!(feature = "stub_library"),
+            "SDK returned HWAAS {value} outside 1..=511"
+        );
         #[cfg(feature = "defmt")]
         if !valid {
             defmt::warn!("SDK returned HWAAS {} outside 1..=511, clamping", value);
@@ -59,8 +63,11 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(debug_assertions, should_panic(expected = "outside 1..=511"))]
-    fn out_of_range_sdk_value_is_clamped_in_release() {
+    #[cfg_attr(
+        all(debug_assertions, not(feature = "stub_library")),
+        should_panic(expected = "outside 1..=511")
+    )]
+    fn out_of_range_sdk_value_is_clamped() {
         assert_eq!(u16::from(Hwaas::from_sdk(0)), 1);
         assert_eq!(u16::from(Hwaas::from_sdk(600)), 511);
     }
