@@ -1,4 +1,4 @@
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum SensorError {
     CalibrationFailed,
@@ -13,7 +13,11 @@ pub enum SensorError {
     ResultNotAvailable,
     ProcessingFailed,
     BufferTooSmall,
+    /// A buffer is not aligned for any built-in type, as the SDK requires
+    BufferMisaligned,
     InitFailed,
+    /// The sensor enable pin could not be set
+    EnablePinFailed,
 }
 
 impl core::error::Error for SensorError {}
@@ -33,7 +37,9 @@ impl core::fmt::Display for SensorError {
             Self::ResultNotAvailable => write!(f, "result not available"),
             Self::ProcessingFailed => write!(f, "processing failed"),
             Self::BufferTooSmall => write!(f, "buffer too small"),
+            Self::BufferMisaligned => write!(f, "buffer misaligned"),
             Self::InitFailed => write!(f, "initialization failed"),
+            Self::EnablePinFailed => write!(f, "failed to set the sensor enable pin"),
         }
     }
 }

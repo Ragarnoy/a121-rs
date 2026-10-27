@@ -61,5 +61,6 @@ pub mod radar;
 /// Sensor module for the radar sensor
 mod sensor;
 
+pub use radar::{AlignedBuffer, RadarBuffer};
 pub use sensor::calibration::{CalibrationInfo, CalibrationResult};
 pub use sensor::error::{ProcessDataError, SensorError};

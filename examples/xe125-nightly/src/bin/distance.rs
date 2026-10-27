@@ -3,7 +3,6 @@
 
 extern crate alloc;
 
-use alloc::vec;
 use core::cell::RefCell;
 
 use defmt::*;
@@ -18,6 +17,7 @@ use a121_rs::detector::distance::config::RadarDistanceConfig;
 use a121_rs::detector::distance::RadarDistanceDetector;
 use a121_rs::radar::version::rss_version;
 use a121_rs::radar::Radar;
+use a121_rs::AlignedBuffer;
 use xe125_nightly::adapter::SpiAdapter;
 use xe125_nightly::*;
 use {defmt_rtt as _, panic_probe as _};
@@ -93,8 +93,9 @@ async fn main(_spawner: Spawner) {
     let mut dist_config = RadarDistanceConfig::balanced();
     dist_config.set_interval(0.7..=1.5);
     let mut distance = RadarDistanceDetector::with_config(&mut radar, dist_config).unwrap();
-    let mut buffer = vec![0u8; distance.get_distance_buffer_size().unwrap()];
-    let mut static_cal_result = vec![0u8; distance.get_static_result_buffer_size().unwrap()];
+    let mut buffer = AlignedBuffer::new(distance.get_distance_buffer_size().unwrap());
+    let mut static_cal_result =
+        AlignedBuffer::new(distance.get_static_result_buffer_size().unwrap());
     trace!("Calibrating detector...");
     let mut dynamic_cal_result = distance
         .calibrate_detector(&calibration, &mut buffer, &mut static_cal_result)

@@ -4,6 +4,7 @@ use core::ptr::NonNull;
 use metadata::ProcessingMetaData;
 
 use crate::config::RadarConfig;
+use crate::sensor::error::SensorError;
 use a121_sys::{
     acc_processing_create, acc_processing_destroy, acc_processing_execute, acc_processing_result_t,
     acc_processing_t,
@@ -44,14 +45,28 @@ impl ProcessingResult {
 pub struct Processing {
     inner: NonNull<acc_processing_t>,
     metadata: ProcessingMetaData,
+    /// Size of the buffer the SDK reads a frame from
+    buffer_size: usize,
 }
 
 impl Processing {
-    pub fn new(config: &RadarConfig) -> Self {
+    /// Creates the processing for `config`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SensorError::ProcessingFailed`] when the SDK cannot create it.
+    pub fn new(config: &RadarConfig) -> Result<Self, SensorError> {
+        let buffer_size = config
+            .config_buffer_size()
+            .map_err(|_| SensorError::ProcessingFailed)? as usize;
         let mut metadata = ProcessingMetaData::new();
         let ptr = unsafe { acc_processing_create(config.ptr(), metadata.mut_ptr()) };
-        let inner = NonNull::new(ptr).expect("Failed to create processing");
-        Self { inner, metadata }
+        let inner = NonNull::new(ptr).ok_or(SensorError::ProcessingFailed)?;
+        Ok(Self {
+            inner,
+            metadata,
+            buffer_size,
+        })
     }
 
     pub fn metadata(&self) -> &ProcessingMetaData {
@@ -62,9 +77,17 @@ impl Processing {
     ///
     /// Note: The raw frame data is written into `buffer` by the SDK.
     /// This method only returns the status flags and temperature.
-    pub fn execute(&mut self, buffer: &mut [u8]) -> ProcessingResult {
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SensorError::BufferTooSmall`] when `buffer` is shorter than the configuration's
+    /// buffer size.
+    pub fn execute(&mut self, buffer: &mut [u8]) -> Result<ProcessingResult, SensorError> {
         use core::mem::MaybeUninit;
 
+        if buffer.len() < self.buffer_size {
+            return Err(SensorError::BufferTooSmall);
+        }
         let mut ffi_result = MaybeUninit::<acc_processing_result_t>::uninit();
         unsafe {
             acc_processing_execute(
@@ -72,7 +95,7 @@ impl Processing {
                 buffer.as_mut_ptr() as *mut c_void,
                 ffi_result.as_mut_ptr(),
             );
-            ProcessingResult::from(ffi_result.assume_init())
+            Ok(ProcessingResult::from(ffi_result.assume_init()))
         }
     }
 }

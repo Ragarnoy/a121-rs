@@ -7,7 +7,7 @@ extern crate tinyrlibc;
 
 use a121_rs::detector::distance::RadarDistanceDetector;
 use a121_rs::radar::Radar;
-use alloc::vec;
+use a121_rs::AlignedBuffer;
 use embassy_executor::{task, Spawner};
 use embassy_time::{Delay, Instant};
 use embedded_alloc::Heap;
@@ -84,8 +84,9 @@ async fn init(_spawner: Spawner) {
     radar.prepare_sensor(&mut calibration).unwrap();
     println!("Radar calibrated and prepared.");
     let mut distance = RadarDistanceDetector::new(&mut radar).unwrap();
-    let mut buffer = vec![0u8; distance.get_distance_buffer_size().unwrap()];
-    let mut static_cal_result = vec![0u8; distance.get_static_result_buffer_size().unwrap()];
+    let mut buffer = AlignedBuffer::new(distance.get_distance_buffer_size().unwrap());
+    let mut static_cal_result =
+        AlignedBuffer::new(distance.get_static_result_buffer_size().unwrap());
     println!("Starting detector calibration...");
     let mut dynamic_cal_result = distance
         .calibrate_detector(&calibration, &mut buffer, &mut static_cal_result)
