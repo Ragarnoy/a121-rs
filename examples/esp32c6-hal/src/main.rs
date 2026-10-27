@@ -5,6 +5,8 @@
 extern crate alloc;
 extern crate tinyrlibc;
 
+use alloc::vec;
+
 use core::mem::MaybeUninit;
 use embassy_executor::Spawner;
 use embassy_time::{Delay, Instant};
@@ -56,7 +58,7 @@ async fn main(_spawner: Spawner) {
     // this requires a clean rebuild because of https://github.com/rust-lang/cargo/issues/10358
     esp_println::logger::init_logger_from_env();
 
-    log::info!("A121 library version: {}", a121_rs::radar::rss_version());
+    log::info!("A121 library version: {}", a121_rs::radar::version::rss_version());
 
     // XE121
     /*
@@ -115,9 +117,9 @@ async fn main(_spawner: Spawner) {
     distance_config.set_signal_quality(15.0);
     distance_config.set_close_range_leakage_cancelation(false);
 
-    let mut distance = RadarDistanceDetector::with_config(&mut radar, distance_config);
-    let mut buffer = vec![0u8; distance.get_distance_buffer_size()];
-    let mut static_cal_result = vec![0u8; distance.get_static_result_buffer_size()];
+    let mut distance = RadarDistanceDetector::with_config(&mut radar, distance_config).unwrap();
+    let mut buffer = vec![0u8; distance.get_distance_buffer_size().unwrap()];
+    let mut static_cal_result = vec![0u8; distance.get_static_result_buffer_size().unwrap()];
     log::info!("Starting detector calibration...");
     let mut dynamic_cal_result = distance
         .calibrate_detector(&calibration, &mut buffer, &mut static_cal_result)
@@ -149,7 +151,7 @@ async fn main(_spawner: Spawner) {
                 }
                 if res.calibration_needed() {
                     log::info!("Calibration needed.");
-                    let calibration = distance.calibrate().await.unwrap();
+                    calibration = distance.calibrate().await.unwrap();
                     dynamic_cal_result = distance
                         .update_calibration(&calibration, &mut buffer)
                         .await
