@@ -142,6 +142,7 @@ where
         sensor_cal_result: &CalibrationResult,
         buffer: &mut [u8],
     ) -> Result<(), SensorError> {
+        self.radar.check_awake()?;
         let buffer_size = self.get_buffer_size()?;
         // The sensor is no longer prepared as before, even if this prepare fails
         self.radar.unprepare();

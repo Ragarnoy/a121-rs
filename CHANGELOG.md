@@ -53,8 +53,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   matches on them need new arms.
 - **Breaking:** `Radar::check_status` and `RadarDistanceDetector::print_status` return
   `Result<(), SensorError>`, failing with `SpiTransferFailed` when the status read fails.
-- `Radar::hibernate_on` leaves the radar unprepared if an SPI transfer fails, since the sensor may be
-  half-hibernated. `Radar::reset_sensor` recovers it.
+- **Breaking:** new `RadarState::Faulted`. The radar enters it when a failure leaves the sensor's state
+  unknown: a failed measurement or calibration, an SPI failure while reading, or an SPI failure while
+  entering or leaving hibernation. Only `Radar::reset_sensor` and `Radar::calibrate` are allowed in it;
+  both power-cycle the sensor.
+- Distance detector calibration (`calibrate_detector`, `update_calibration`) and detector prepares
+  require a powered radar that is not faulted, and leave the radar unprepared, since the SDK
+  prepares the sensor with its own configurations while calibrating.
 - The xe125 example links newlib's `sinf`, `cosf` and `tanf` instead of the compiler_builtins ones,
   which saves about 10 KB of flash, and logs at `info` level by default.
 - **Breaking:** narrowed the public API to what users of the crate need. These are no longer public:
