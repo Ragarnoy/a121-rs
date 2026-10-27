@@ -30,7 +30,7 @@ presence = ["a121-sys/presence"]
 libm = ["dep:libm", "num/libm"]
 # Log SDK messages through a Rust variadic function instead of the C logging bridge.
 # Recommended if you don't want to have to link a huge chunk of newlib. Needs a defmt global logger.
-# The format arguments are not rendered yet; the raw format string is logged.
+# SDK messages are formatted in Rust, so the C logging bridge and newlib's vsnprintf are not linked.
 logger = ["defmt"]
 # Deprecated alias for `logger`, kept for compatibility. Variadic functions are stable since Rust 1.99.
 nightly-logger = ["logger"]

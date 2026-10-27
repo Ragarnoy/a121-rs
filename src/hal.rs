@@ -18,6 +18,9 @@ use a121_sys::{
     acc_log_level_t_ACC_LOG_LEVEL_WARNING as LOG_WARNING,
 };
 
+#[cfg(any(feature = "logger", test))]
+mod printf;
+
 pub type RadarSpi = dyn SpiDevice<u8, Error = SpiErrorKind> + Send;
 pub type RefRadarSpi = &'static mut RadarSpi;
 
@@ -249,15 +252,23 @@ unsafe fn sdk_str<'a>(ptr: *const c_char) -> &'a str {
 
 /// SDK log callback used with the `logger` feature, replacing the C logging bridge.
 ///
-/// Note: the format arguments are not rendered yet; the raw format string is logged.
+/// Renders the format string and its arguments in Rust, so newlib's `vsnprintf` is not needed.
+/// Messages longer than 256 bytes are cut and end with `…`. Floats are rendered with 7 significant
+/// digits.
 #[cfg(feature = "logger")]
 unsafe extern "C" fn logger(
     level: acc_log_level_t,
     module: *const c_char,
     format: *const c_char,
-    _args: ...
+    mut args: ...
 ) {
-    unsafe { log_message(level, sdk_str(module), sdk_str(format)) }
+    let mut message = printf::LineBuf::<256>::new();
+    if !format.is_null() {
+        let format = unsafe { CStr::from_ptr(format) }.to_bytes();
+        // Writing to a LineBuf never fails; overflow is truncated
+        let _ = unsafe { printf::format(format, &mut args, &mut message) };
+    }
+    unsafe { log_message(level, sdk_str(module), message.as_str()) }
 }
 
 /// This function is called by the C logging bridge in a121-sys with an already formatted message.
