@@ -55,10 +55,19 @@ impl TryFrom<acc_config_prf_t> for PulseRepetitionFrequency {
 }
 
 impl PulseRepetitionFrequency {
-    /// Converts a value read back from the SDK, falling back to the SDK default of 15.6 MHz for
-    /// a value the SDK never stores.
+    /// Converts a value read back from the SDK.
+    ///
+    /// A value the SDK never stores means a corrupted configuration or mismatched bindings: it
+    /// fails a debug assertion, and in release builds it is logged and replaced by the SDK
+    /// default of 15.6 MHz.
     pub(crate) fn from_sdk(value: acc_config_prf_t) -> Self {
-        Self::try_from(value).unwrap_or(Self::Prf15_6Mhz)
+        let prf = Self::try_from(value);
+        debug_assert!(prf.is_ok(), "SDK returned unknown PRF {value}");
+        #[cfg(feature = "defmt")]
+        if prf.is_err() {
+            defmt::warn!("SDK returned unknown PRF {}, using 15.6 MHz", value);
+        }
+        prf.unwrap_or(Self::Prf15_6Mhz)
     }
 
     /// Returns the PRF value in Hz.
@@ -120,6 +129,15 @@ mod tests {
             assert_eq!(PulseRepetitionFrequency::from_ffi(raw), Some(prf));
         }
         assert!(PulseRepetitionFrequency::try_from(6).is_err());
+    }
+
+    #[test]
+    #[cfg_attr(debug_assertions, should_panic(expected = "unknown PRF"))]
+    fn unknown_sdk_value_falls_back_in_release() {
+        assert_eq!(
+            PulseRepetitionFrequency::from_sdk(6),
+            PulseRepetitionFrequency::Prf15_6Mhz
+        );
     }
 
     #[test]

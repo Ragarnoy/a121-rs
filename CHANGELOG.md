@@ -92,6 +92,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   signatures but were not nameable before.
 - `SensorError::BufferMisaligned`, `SensorError::EnablePinFailed` and
   `ProcessDataError::BufferMisaligned`.
+- `RadarDistanceDetector` and `PresenceDetector` forward `hibernate_on`, `hibernate_off` and
+  `reset_sensor` to their radar, so a detector can hibernate between frames without being dropped
+  and recalibrated.
 
 ### Fixed
 - `libm` feature: `cabsf` and `cexpf` had the wrong signatures. They took a single `f32` instead of a
@@ -114,7 +117,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A failed detector prepare left the radar ready with its previous preparation.
 - Creating a distance or presence detector panicked when the SDK returned NULL. It returns
   `SensorError::InitFailed`.
-- `RadarConfig::hwaas()` and distance results could panic on unexpected SDK values.
+- `RadarConfig::hwaas()` and distance results could panic on unexpected SDK values. An HWAAS or PRF
+  value the SDK never stores now fails a debug assertion, and in release builds is logged (with
+  `defmt`) and clamped or replaced by the SDK default.
 - `Hwaas` accepted 0. The SDK range is 1–511.
 - `RadarDistanceDetector::update_calibration` ignored SDK failures after the first step and could wait
   forever.

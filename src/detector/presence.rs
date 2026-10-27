@@ -203,6 +203,28 @@ where
         self.radar.calibrate().await
     }
 
+    /// Puts the radar in hibernation between frames, keeping the detector and its preparation.
+    ///
+    /// See [`Radar::hibernate_on`](crate::radar::Radar::hibernate_on).
+    pub async fn hibernate_on(&mut self) -> Result<(), SensorError> {
+        self.radar.hibernate_on().await
+    }
+
+    /// Wakes the radar from hibernation. The detector can measure again without being prepared.
+    ///
+    /// See [`Radar::hibernate_off`](crate::radar::Radar::hibernate_off).
+    pub async fn hibernate_off(&mut self) -> Result<(), SensorError> {
+        self.radar.hibernate_off().await
+    }
+
+    /// Power-cycles the sensor, which recovers a [faulted](RadarState::Faulted) radar. The
+    /// detector must be prepared again before measuring.
+    ///
+    /// See [`Radar::reset_sensor`](crate::radar::Radar::reset_sensor).
+    pub async fn reset_sensor(&mut self) -> Result<(), SensorError> {
+        self.radar.reset_sensor().await
+    }
+
     /// Resets the internal filters of the presence detector.
     ///
     /// This clears the detector's internal state, which can be useful when:
