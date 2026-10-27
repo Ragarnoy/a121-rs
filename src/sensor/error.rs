@@ -56,6 +56,8 @@ pub enum ProcessDataError {
     Unavailable,
     /// One or more buffers are too small
     BufferTooSmall,
+    /// A buffer is not aligned for any built-in type, as the SDK requires
+    BufferMisaligned,
 }
 
 impl core::error::Error for ProcessDataError {}
@@ -67,6 +69,18 @@ impl core::fmt::Display for ProcessDataError {
             Self::ProcessingFailed => write!(f, "processing failed"),
             Self::Unavailable => write!(f, "result unavailable"),
             Self::BufferTooSmall => write!(f, "buffer too small"),
+            Self::BufferMisaligned => write!(f, "buffer misaligned"),
+        }
+    }
+}
+
+impl From<SensorError> for ProcessDataError {
+    /// Maps buffer check errors; any other sensor error is a processing failure.
+    fn from(error: SensorError) -> Self {
+        match error {
+            SensorError::BufferTooSmall => Self::BufferTooSmall,
+            SensorError::BufferMisaligned => Self::BufferMisaligned,
+            _ => Self::ProcessingFailed,
         }
     }
 }

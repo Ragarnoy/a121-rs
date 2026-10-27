@@ -3,7 +3,7 @@ pub mod results;
 
 use crate::detector::presence::config::PresenceConfig;
 use crate::detector::presence::results::{PresenceMetadata, PresenceResult};
-use crate::radar::{Radar, RadarState};
+use crate::radar::{check_buffer, Radar, RadarState};
 use crate::sensor::calibration::CalibrationResult;
 use crate::sensor::error::ProcessDataError;
 use crate::sensor::error::SensorError;
@@ -112,6 +112,8 @@ where
     /// # Errors
     ///
     /// Returns [`SensorError::BufferTooSmall`] if buffer is too small.
+    /// Returns [`SensorError::BufferMisaligned`] if `buffer` is not aligned for any built-in
+    /// type; see [`AlignedBuffer`](crate::AlignedBuffer).
     pub async fn prepare_detector(
         &mut self,
         sensor_cal_result: &CalibrationResult,
@@ -119,10 +121,8 @@ where
     ) -> Result<(), SensorError> {
         let buffer_size = self.get_buffer_size()?;
 
-        // Automatic buffer size validation
-        if buffer.len() < buffer_size {
-            return Err(SensorError::BufferTooSmall);
-        }
+        // Automatic buffer size and alignment validation
+        check_buffer(buffer, buffer_size)?;
 
         unsafe {
             self.prepare_detector_unchecked(sensor_cal_result, buffer)
@@ -140,6 +140,9 @@ where
         sensor_cal_result: &CalibrationResult,
         buffer: &mut [u8],
     ) -> Result<(), SensorError> {
+        let buffer_size = self.get_buffer_size()?;
+        // The sensor is no longer prepared as before, even if this prepare fails
+        self.radar.unprepare();
         let prepare_success = acc_detector_presence_prepare(
             self.inner.inner_mut(),
             self.config.inner.as_ptr(),
@@ -150,7 +153,7 @@ where
         );
 
         if prepare_success {
-            self.radar.mark_prepared();
+            self.radar.mark_prepared(buffer_size);
             Ok(())
         } else {
             Err(SensorError::PrepareFailed)
@@ -229,6 +232,8 @@ where
     /// # Errors
     ///
     /// Returns [`ProcessDataError::BufferTooSmall`] if buffer is too small.
+    /// Returns [`ProcessDataError::BufferMisaligned`] if `buffer` is not aligned for any built-in
+    /// type; see [`AlignedBuffer`](crate::AlignedBuffer).
     pub async fn detect_presence<'buf>(
         &mut self,
         buffer: &'buf mut [u8],
@@ -237,10 +242,8 @@ where
             .get_buffer_size()
             .map_err(|_| ProcessDataError::ProcessingFailed)?;
 
-        // Automatic buffer size validation
-        if buffer.len() < buffer_size {
-            return Err(ProcessDataError::BufferTooSmall);
-        }
+        // Automatic buffer size and alignment validation
+        check_buffer(buffer, buffer_size)?;
 
         // SAFETY: Buffer size validated above
         unsafe { self.detect_presence_unchecked(buffer).await }

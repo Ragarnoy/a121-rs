@@ -4,6 +4,7 @@ use core::ptr::NonNull;
 use metadata::ProcessingMetaData;
 
 use crate::config::RadarConfig;
+use crate::radar::check_buffer;
 use crate::sensor::error::SensorError;
 use a121_sys::{
     acc_processing_create, acc_processing_destroy, acc_processing_execute, acc_processing_result_t,
@@ -69,6 +70,11 @@ impl Processing {
         })
     }
 
+    /// Size of the buffer a frame is read into and processed from.
+    pub fn buffer_size(&self) -> usize {
+        self.buffer_size
+    }
+
     pub fn metadata(&self) -> &ProcessingMetaData {
         &self.metadata
     }
@@ -81,13 +87,12 @@ impl Processing {
     /// # Errors
     ///
     /// Returns [`SensorError::BufferTooSmall`] when `buffer` is shorter than the configuration's
-    /// buffer size.
+    /// buffer size, and [`SensorError::BufferMisaligned`] when it is not aligned for any built-in
+    /// type.
     pub fn execute(&mut self, buffer: &mut [u8]) -> Result<ProcessingResult, SensorError> {
         use core::mem::MaybeUninit;
 
-        if buffer.len() < self.buffer_size {
-            return Err(SensorError::BufferTooSmall);
-        }
+        check_buffer(buffer, self.buffer_size)?;
         let mut ffi_result = MaybeUninit::<acc_processing_result_t>::uninit();
         unsafe {
             acc_processing_execute(

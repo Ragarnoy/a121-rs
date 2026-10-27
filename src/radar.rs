@@ -20,8 +20,8 @@ use crate::sensor::Sensor;
 /// Default scratch buffer size for radar operations (calibration and sensor preparation).
 ///
 /// The SDK needs at least [`RadarConfig::config_buffer_size`] bytes, which depends on the
-/// configuration. [`Radar::calibrate`] and [`Radar::prepare_sensor`] check this at runtime and
-/// return [`SensorError::BufferTooSmall`] when the scratch buffer is too small; use a larger
+/// configuration. [`Radar::prepare_sensor`] checks this at runtime and returns
+/// [`SensorError::BufferTooSmall`] when the scratch buffer is too small; use a larger
 /// `SCRATCH_SIZE` in that case.
 pub const DEFAULT_SCRATCH_BUFFER_SIZE: usize = 5_560;
 
@@ -29,7 +29,8 @@ pub const DEFAULT_SCRATCH_BUFFER_SIZE: usize = 5_560;
 ///
 /// Use it for the buffers passed to [`Radar::measure`] and to the detectors.
 #[derive(Clone)]
-#[repr(C, align(16))]
+#[cfg_attr(target_arch = "arm", repr(C, align(8)))]
+#[cfg_attr(not(target_arch = "arm"), repr(C, align(16)))]
 pub struct RadarBuffer<const N: usize>([u8; N]);
 
 impl<const N: usize> RadarBuffer<N> {
@@ -93,11 +94,16 @@ impl DerefMut for AlignedBuffer {
     }
 }
 
-// RadarBuffer must satisfy the alignment the SDK asks for on every target
-const _: () = assert!(core::mem::align_of::<RadarBuffer<0>>() >= SDK_ALIGN);
+// RadarBuffer has exactly the alignment the SDK asks for on every target
+const _: () = assert!(core::mem::align_of::<RadarBuffer<0>>() == SDK_ALIGN);
 
-/// Checks that a buffer handed to the SDK is long enough and suitably aligned.
-fn check_buffer(len: usize, addr: usize, min_len: usize) -> Result<(), SensorError> {
+/// Checks that a buffer handed to the SDK holds at least `min_len` bytes and is aligned for any
+/// built-in type.
+pub(crate) fn check_buffer(buffer: &[u8], min_len: usize) -> Result<(), SensorError> {
+    check_layout(buffer.len(), buffer.as_ptr() as usize, min_len)
+}
+
+fn check_layout(len: usize, addr: usize, min_len: usize) -> Result<(), SensorError> {
     if len < min_len {
         Err(SensorError::BufferTooSmall)
     } else if !addr.is_multiple_of(SDK_ALIGN) {
@@ -116,6 +122,18 @@ pub enum RadarState {
     Ready,
     /// Hibernating with the enable pin low.
     Hibernating,
+}
+
+/// What the sensor was last prepared for.
+enum Prepared {
+    None,
+    /// [`Radar::prepare_sensor`], with the processing for the prepared configuration.
+    Radar(Processing),
+    /// A detector, which measures into buffers of `buffer_size` bytes.
+    #[cfg(any(feature = "distance", feature = "presence"))]
+    Detector {
+        buffer_size: usize,
+    },
 }
 
 /// Radar sensor controller with configurable scratch buffer size.
@@ -141,14 +159,11 @@ where
     id: u32,
     pub(crate) config: RadarConfig,
     sensor: Sensor<ENABLE, DLY>,
-    processing: Option<Processing>,
     pub(crate) interrupt: SINT,
     _hal: AccHalImpl,
     state: RadarState,
-    /// Set when the configuration changed while hibernating, so waking up needs a new prepare
-    needs_prepare: bool,
-    /// Buffer size of the configuration prepared by [`Radar::prepare_sensor`]
-    buffer_size: Option<usize>,
+    /// Kept while hibernating, so waking up knows whether the sensor is still prepared
+    prepared: Prepared,
     scratch: RadarBuffer<SCRATCH_SIZE>,
 }
 
@@ -196,11 +211,9 @@ where
             config,
             interrupt,
             sensor,
-            processing: None,
             _hal: hal,
             state: RadarState::Enabled,
-            needs_prepare: false,
-            buffer_size: None,
+            prepared: Prepared::None,
             scratch: RadarBuffer::new(),
         })
     }
@@ -217,22 +230,22 @@ where
 
     /// The radar configuration, for changing it.
     ///
-    /// The sensor keeps measuring with the configuration it was prepared with, so the radar
-    /// leaves the ready state and [`Radar::prepare_sensor`] must be called again.
+    /// When the sensor was prepared with [`Radar::prepare_sensor`], it keeps measuring with the
+    /// configuration it was prepared with, so the radar leaves the ready state and must be
+    /// prepared again. Detectors use their own configuration and are not affected.
     pub fn config_mut(&mut self) -> &mut RadarConfig {
-        match self.state {
-            RadarState::Ready => self.state = RadarState::Enabled,
-            RadarState::Hibernating => self.needs_prepare = true,
-            RadarState::Enabled => {}
+        if matches!(self.prepared, Prepared::Radar(_)) {
+            self.unprepare();
         }
-        self.processing = None;
-        self.buffer_size = None;
         &mut self.config
     }
 
     /// The processing for the prepared configuration, once [`Radar::prepare_sensor`] succeeded.
     pub fn processing(&self) -> Option<&Processing> {
-        self.processing.as_ref()
+        match &self.prepared {
+            Prepared::Radar(processing) => Some(processing),
+            _ => None,
+        }
     }
 
     /// Processes a frame read by [`Radar::measure`].
@@ -240,13 +253,12 @@ where
     /// # Errors
     ///
     /// Returns [`SensorError::NotReady`] when the sensor was not prepared with
-    /// [`Radar::prepare_sensor`], and [`SensorError::BufferTooSmall`] when `data` is shorter than
-    /// the configuration's buffer size.
+    /// [`Radar::prepare_sensor`], and the errors of [`Processing::execute`].
     pub fn process(&mut self, data: &mut [u8]) -> Result<ProcessingResult, SensorError> {
-        self.processing
-            .as_mut()
-            .ok_or(SensorError::NotReady)?
-            .execute(data)
+        match &mut self.prepared {
+            Prepared::Radar(processing) => processing.execute(data),
+            _ => Err(SensorError::NotReady),
+        }
     }
 
     /// Prepares the sensor for the current configuration and creates the matching processing.
@@ -263,29 +275,29 @@ where
             return Err(SensorError::NotReady);
         }
 
-        let buffer_size = self.required_buffer_size(SensorError::PrepareFailed)?;
-        self.processing = None;
-        self.buffer_size = None;
+        let processing = Processing::new(&self.config)?;
+        if processing.buffer_size() > SCRATCH_SIZE {
+            return Err(SensorError::BufferTooSmall);
+        }
+        self.unprepare();
         self.sensor
             .prepare(&self.config, calibration_result, &mut self.scratch)?;
-        self.processing = Some(Processing::new(&self.config)?);
-        self.buffer_size = Some(buffer_size);
+        self.prepared = Prepared::Radar(processing);
         self.state = RadarState::Ready;
         Ok(())
     }
 
-    /// Buffer size the SDK needs for the current configuration, checked against the scratch size.
-    fn required_buffer_size(&self, error: SensorError) -> Result<usize, SensorError> {
-        let size = self.config.config_buffer_size().map_err(|_| error)? as usize;
-        if size > SCRATCH_SIZE {
-            return Err(SensorError::BufferTooSmall);
+    /// Forgets the preparation, before the sensor is prepared again or after it lost it.
+    pub(crate) fn unprepare(&mut self) {
+        self.prepared = Prepared::None;
+        if self.state == RadarState::Ready {
+            self.state = RadarState::Enabled;
         }
-        Ok(size)
     }
 
     /// Wakes the sensor from hibernation: enables it, then restores its state.
     ///
-    /// The radar is ready again, unless the configuration was changed while hibernating, in
+    /// The radar is ready again, unless its configuration was changed while hibernating, in
     /// which case it must be prepared again.
     pub async fn hibernate_off(&mut self) -> Result<(), SensorError> {
         if self.state != RadarState::Hibernating {
@@ -293,13 +305,15 @@ where
         }
 
         self.sensor.enable_sensor().await?;
-        self.sensor.hibernate_off()?;
-        self.state = if self.needs_prepare {
-            RadarState::Enabled
-        } else {
-            RadarState::Ready
+        if let Err(e) = self.sensor.hibernate_off() {
+            // Still hibernating: power the sensor down again so the state stays truthful
+            let _ = self.sensor.disable_sensor().await;
+            return Err(e);
+        }
+        self.state = match self.prepared {
+            Prepared::None => RadarState::Enabled,
+            _ => RadarState::Ready,
         };
-        self.needs_prepare = false;
         Ok(())
     }
 
@@ -308,17 +322,19 @@ where
     /// # Errors
     ///
     /// `data` must be aligned for any built-in type (see [`RadarBuffer`]), or this returns
-    /// [`SensorError::BufferMisaligned`]. After [`Radar::prepare_sensor`], it must also hold the
-    /// configuration's buffer size, or this returns [`SensorError::BufferTooSmall`].
+    /// [`SensorError::BufferMisaligned`]. It must hold the buffer size of the prepared
+    /// configuration or detector, or this returns [`SensorError::BufferTooSmall`].
     pub async fn measure(&mut self, data: &mut [u8]) -> Result<(), SensorError> {
         if self.state != RadarState::Ready {
             return Err(SensorError::NotReady);
         }
-        check_buffer(
-            data.len(),
-            data.as_ptr() as usize,
-            self.buffer_size.unwrap_or(0),
-        )?;
+        let min_len = match &self.prepared {
+            Prepared::None => 0,
+            Prepared::Radar(processing) => processing.buffer_size(),
+            #[cfg(any(feature = "distance", feature = "presence"))]
+            Prepared::Detector { buffer_size } => *buffer_size,
+        };
+        check_buffer(data, min_len)?;
 
         self.sensor.measure(&mut self.interrupt).await?;
         self.sensor.read(data)?;
@@ -326,15 +342,17 @@ where
     }
 
     /// Puts the sensor in hibernation: saves its state, then disables it with the enable pin.
+    ///
+    /// If disabling fails, the sensor is hibernating but still powered; the radar is in the
+    /// hibernating state either way, and [`Radar::hibernate_off`] wakes it.
     pub async fn hibernate_on(&mut self) -> Result<(), SensorError> {
         if self.state != RadarState::Ready {
             return Err(SensorError::NotReady);
         }
 
         self.sensor.hibernate_on()?;
-        self.sensor.disable_sensor().await?;
         self.state = RadarState::Hibernating;
-        Ok(())
+        self.sensor.disable_sensor().await
     }
 
     /// Get the current state of the radar
@@ -342,14 +360,11 @@ where
         self.state
     }
 
-    /// Marks the sensor as prepared after a detector prepared it through the SDK
-    ///
-    /// Detectors size and process their own buffers, so the radar's processing is dropped.
+    /// Marks the sensor as prepared after a detector prepared it through the SDK, for
+    /// measurements into buffers of `buffer_size` bytes.
     #[cfg(any(feature = "distance", feature = "presence"))]
-    pub(crate) fn mark_prepared(&mut self) {
-        self.processing = None;
-        self.buffer_size = None;
-        self.needs_prepare = false;
+    pub(crate) fn mark_prepared(&mut self, buffer_size: usize) {
+        self.prepared = Prepared::Detector { buffer_size };
         self.state = RadarState::Ready;
     }
 
@@ -363,16 +378,10 @@ where
     /// Calibration power-cycles the sensor, so the radar is back in the enabled state
     /// afterwards and must be prepared again before measuring.
     ///
-    /// # Errors
-    ///
-    /// Returns [`SensorError::BufferTooSmall`] when `SCRATCH_SIZE` is smaller than the buffer
-    /// size of the radar configuration. Detectors use their own configuration, which this check
-    /// does not cover.
+    /// The SDK needs a scratch buffer of at least the configuration's buffer size; calibration
+    /// fails if `SCRATCH_SIZE` is too small.
     pub async fn calibrate(&mut self) -> Result<CalibrationResult, SensorError> {
-        self.required_buffer_size(SensorError::CalibrationFailed)?;
-        self.processing = None;
-        self.buffer_size = None;
-        self.needs_prepare = false;
+        self.prepared = Prepared::None;
         self.state = RadarState::Enabled;
         self.sensor
             .calibrate(&mut self.interrupt, &mut self.scratch)
@@ -381,9 +390,7 @@ where
 
     /// Reset the sensor - available in any state
     pub async fn reset_sensor(&mut self) -> Result<(), SensorError> {
-        self.processing = None;
-        self.buffer_size = None;
-        self.needs_prepare = false;
+        self.prepared = Prepared::None;
         // The sensor is unprepared after a power cycle, even if re-enabling fails
         self.state = RadarState::Enabled;
         self.sensor.reset_sensor().await
@@ -414,7 +421,7 @@ mod tests {
 
     #[test]
     fn radar_buffer_is_aligned_for_the_sdk() {
-        assert_eq!(core::mem::align_of::<RadarBuffer<5560>>(), 16);
+        assert_eq!(core::mem::align_of::<RadarBuffer<5560>>(), SDK_ALIGN);
         let buffer = RadarBuffer::<5560>::new();
         assert_eq!(buffer.len(), 5560);
         assert!((buffer.as_ptr() as usize).is_multiple_of(SDK_ALIGN));
@@ -433,9 +440,15 @@ mod tests {
 
     #[test]
     fn buffer_checks() {
-        assert_eq!(check_buffer(10, 0, 11), Err(SensorError::BufferTooSmall));
-        assert_eq!(check_buffer(10, 4, 10), Err(SensorError::BufferMisaligned));
-        assert_eq!(check_buffer(10, SDK_ALIGN * 3, 10), Ok(()));
-        assert_eq!(check_buffer(10, SDK_ALIGN, 0), Ok(()));
+        assert_eq!(check_layout(10, 0, 11), Err(SensorError::BufferTooSmall));
+        assert_eq!(check_layout(10, 4, 10), Err(SensorError::BufferMisaligned));
+        assert_eq!(check_layout(10, SDK_ALIGN * 3, 10), Ok(()));
+        assert_eq!(check_layout(10, SDK_ALIGN, 0), Ok(()));
+        let buffer = RadarBuffer::<32>::new();
+        assert_eq!(
+            check_buffer(&buffer[1..], 0),
+            Err(SensorError::BufferMisaligned)
+        );
+        assert_eq!(check_buffer(&buffer, 32), Ok(()));
     }
 }

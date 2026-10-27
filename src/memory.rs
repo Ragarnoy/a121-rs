@@ -28,8 +28,8 @@
 //! println!("Distance detector requires {} bytes", total_memory);
 //!
 //! // Allocate buffers with correct sizes
-//! let mut buffer = vec![0u8; calc.buffer_size()];
-//! let mut static_cal = vec![0u8; calc.static_calibration_size()];
+//! let mut buffer = a121_rs::AlignedBuffer::new(calc.buffer_size());
+//! let mut static_cal = a121_rs::AlignedBuffer::new(calc.static_calibration_size());
 //! ```
 //!
 //! # Compile-Time Usage

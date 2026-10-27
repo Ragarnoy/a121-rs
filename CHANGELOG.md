@@ -38,8 +38,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Breaking:** `Radar::hibernate_on` and `hibernate_off` are `async`: they now disable and enable the
   sensor with the enable pin, as the SDK requires.
 - **Breaking:** `Radar::reset_sensor`, `Processing::new` and `Processing::execute` return `Result`.
-- **Breaking:** `Radar::measure` requires a buffer aligned for any built-in type (see `RadarBuffer`
-  and `AlignedBuffer`), and after `prepare_sensor`, one of at least the configuration's buffer size.
+- **Breaking:** `Radar::measure`, `Processing::execute` and the checked detector functions
+  (`calibrate_detector`, `update_calibration`, `prepare_detector`, `process_data`,
+  `detect_presence`) require buffers aligned for any built-in type (see `RadarBuffer` and
+  `AlignedBuffer`). `measure` also requires the buffer size of the prepared configuration or detector.
 - **Breaking:** removed `PREPARE_BUFFER_SIZE`. The scratch buffer is checked against
   `RadarConfig::config_buffer_size()` at runtime instead.
 - The xe125 example links newlib's `sinf`, `cosf` and `tanf` instead of the compiler_builtins ones,
@@ -56,7 +58,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   crate root. They appear in public signatures but were not nameable before.
 - Host unit tests, run against the stub libraries.
 - `RadarBuffer<N>` and `AlignedBuffer`: byte buffers aligned as the SDK requires.
-- `SensorError::BufferMisaligned` and `SensorError::EnablePinFailed`.
+- `SensorError::BufferMisaligned`, `SensorError::EnablePinFailed` and
+  `ProcessDataError::BufferMisaligned`.
 
 ### Fixed
 - `libm` feature: `cabsf` and `cexpf` had the wrong signatures. They took a single `f32` instead of a
@@ -74,7 +77,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The radar scratch buffer was not aligned for any built-in type, and preparation used a fixed
   2560-byte slice instead of the configuration's buffer size.
 - `Processing::execute` did not check the buffer length.
-- An enable pin or interrupt error panicked instead of returning an error.
+- An enable pin or interrupt error panicked instead of returning an error, including in the distance
+  detector's calibration.
+- A failed detector prepare left the radar ready with its previous preparation.
 - `Hwaas` accepted 0. The SDK range is 1–511.
 - `RadarDistanceDetector::update_calibration` ignored SDK failures after the first step and could wait
   forever.
