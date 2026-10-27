@@ -81,6 +81,10 @@ where
     where
         SPI: SpiDevice<u8, Error = SpiErrorKind> + Send + 'static,
     {
+        // Force evaluation of the compile-time scratch size check
+        #[allow(clippy::let_unit_value)]
+        let () = Self::_SCRATCH_SIZE_CHECK;
+
         // Extended power cycle: ensure sensor is off first for longer
         enable_pin.set_low().map_err(|_| SensorError::InitFailed)?;
         delay.delay_ms(50).await; // Longer off time
@@ -167,15 +171,25 @@ where
         self.state
     }
 
+    /// Marks the sensor as prepared after a detector prepared it through the SDK
+    pub(crate) fn mark_prepared(&mut self) {
+        self.state = RadarState::Ready;
+    }
+
     /// Get the radar sensor ID
     pub fn id(&self) -> u32 {
         self.id
     }
 
     /// Calibrate the sensor - available in any state
+    ///
+    /// Calibration power-cycles the sensor, so the radar is back in the enabled state
+    /// afterwards and must be prepared again before measuring.
     pub async fn calibrate(&mut self) -> Result<CalibrationResult, SensorError> {
         let buf = &mut self.scratch[..];
-        self.sensor.calibrate(&mut self.interrupt, buf).await
+        let result = self.sensor.calibrate(&mut self.interrupt, buf).await;
+        self.state = RadarState::Enabled;
+        result
     }
 
     /// Reset the sensor - available in any state

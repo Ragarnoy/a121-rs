@@ -101,11 +101,18 @@ impl AccHalImpl {
     ) {
         let tmp_buf = unsafe { core::slice::from_raw_parts_mut(buffer, buffer_length) };
         // Borrow a mutable reference to the SpiBus
-        SPI_INSTANCE.lock(|cell| unsafe {
+        SPI_INSTANCE.lock(|cell| {
             let mut binding = cell.borrow_mut();
-            let spi = binding.as_mut().unwrap_unchecked();
-            // Perform the SPI transfer
-            spi.transfer_in_place(tmp_buf).unwrap_unchecked();
+            let Some(spi) = binding.as_mut() else {
+                #[cfg(feature = "defmt")]
+                defmt::error!("SPI transfer requested before an SPI device was registered");
+                return;
+            };
+            // Perform the SPI transfer. The SDK callback cannot report errors, so log and continue.
+            if let Err(_e) = spi.transfer_in_place(tmp_buf) {
+                #[cfg(feature = "defmt")]
+                defmt::error!("SPI transfer failed: {}", defmt::Debug2Format(&_e));
+            }
         });
     }
 
@@ -134,23 +141,28 @@ use alloc::alloc::{alloc, dealloc, Layout};
 /// Allocates memory for use by the radar SDK.
 ///
 /// Uses Rust's GlobalAlloc to avoid C malloc symbol conflicts.
-/// The size is stored before the returned pointer for use in deallocation.
+/// The size is stored in an [`ALLOC_HEADER`]-byte header before the returned pointer for use in
+/// deallocation. The header keeps the returned pointer aligned for any built-in type, as the SDK requires.
 ///
 /// # Safety
 ///
 /// This function is unsafe as it performs raw pointer manipulation.
+/// Size and alignment of the header placed in front of each SDK allocation.
+const ALLOC_HEADER: usize = 8;
+const _: () = assert!(core::mem::size_of::<usize>() <= ALLOC_HEADER);
+
 unsafe extern "C" fn mem_alloc(size: usize) -> *mut c_void {
     if size == 0 {
         return core::ptr::null_mut();
     }
 
     // Allocate extra space to store the size before the user data
-    let total = match size.checked_add(core::mem::size_of::<usize>()) {
+    let total = match size.checked_add(ALLOC_HEADER) {
         Some(t) => t,
         None => return core::ptr::null_mut(),
     };
 
-    let layout = match Layout::from_size_align(total, 8) {
+    let layout = match Layout::from_size_align(total, ALLOC_HEADER) {
         Ok(l) => l,
         Err(_) => return core::ptr::null_mut(),
     };
@@ -164,7 +176,7 @@ unsafe extern "C" fn mem_alloc(size: usize) -> *mut c_void {
     *(ptr as *mut usize) = size;
 
     // Return pointer after the size metadata
-    ptr.add(core::mem::size_of::<usize>()) as *mut c_void
+    ptr.add(ALLOC_HEADER) as *mut c_void
 }
 
 /// Frees memory previously allocated by mem_alloc.
@@ -181,13 +193,13 @@ unsafe extern "C" fn mem_free(ptr: *mut c_void) {
     }
 
     // Retrieve the size stored before the user data
-    let size_ptr = (ptr as *mut usize).sub(1);
-    let size = *size_ptr;
+    let base = (ptr as *mut u8).sub(ALLOC_HEADER);
+    let size = *(base as *mut usize);
 
-    let total = size + core::mem::size_of::<usize>();
-    let layout = Layout::from_size_align_unchecked(total, 8);
+    let total = size + ALLOC_HEADER;
+    let layout = Layout::from_size_align_unchecked(total, ALLOC_HEADER);
 
-    dealloc(size_ptr as *mut u8, layout);
+    dealloc(base, layout);
 }
 
 #[cfg(feature = "nightly-logger")]

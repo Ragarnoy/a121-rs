@@ -1,6 +1,7 @@
 use crate::config::RadarConfig;
 use crate::detector::distance::InnerRadarDistanceDetector;
 use crate::processing::ProcessingResult;
+use crate::sensor::error::SensorError;
 use a121_sys::{
     acc_detector_cal_result_dynamic_t, acc_detector_distance_get_sizes,
     acc_detector_distance_result_t, ACC_DETECTOR_DISTANCE_RESULT_MAX_NUM_DISTANCES,
@@ -144,23 +145,26 @@ pub(super) struct DistanceSizes {
 }
 
 impl DistanceSizes {
-    pub(super) fn new(handle: &InnerRadarDistanceDetector) -> Self {
-        use core::mem::MaybeUninit;
+    /// Queries the buffer sizes needed by the detector.
+    ///
+    /// Returns [`SensorError::InitFailed`] if the SDK could not report the sizes.
+    pub(super) fn new(handle: &InnerRadarDistanceDetector) -> Result<Self, SensorError> {
+        let mut buffer_size: u32 = 0;
+        let mut detector_cal_result_static_size: u32 = 0;
 
-        let mut buffer_size = MaybeUninit::<u32>::uninit();
-        let mut detector_cal_result_static_size = MaybeUninit::<u32>::uninit();
-
-        unsafe {
+        let success = unsafe {
             acc_detector_distance_get_sizes(
                 handle.inner(),
-                buffer_size.as_mut_ptr(),
-                detector_cal_result_static_size.as_mut_ptr(),
-            );
-            Self {
-                buffer_size: buffer_size.assume_init() as usize,
-                detector_cal_result_static_size: detector_cal_result_static_size.assume_init()
-                    as usize,
-            }
+                &mut buffer_size,
+                &mut detector_cal_result_static_size,
+            )
+        };
+        if !success {
+            return Err(SensorError::InitFailed);
         }
+        Ok(Self {
+            buffer_size: buffer_size as usize,
+            detector_cal_result_static_size: detector_cal_result_static_size as usize,
+        })
     }
 }

@@ -74,7 +74,7 @@ where
         let config = RadarDistanceConfig::default();
         let inner = InnerRadarDistanceDetector::new(&config);
         #[cfg(feature = "defmt")]
-        defmt::trace!("{:?}", DistanceSizes::new(&inner));
+        defmt::trace!("{:?}", DistanceSizes::new(&inner).ok());
         Ok(Self {
             radar,
             inner,
@@ -93,7 +93,7 @@ where
         }
         let inner = InnerRadarDistanceDetector::new(&config);
         #[cfg(feature = "defmt")]
-        defmt::trace!("{:?}", DistanceSizes::new(&inner));
+        defmt::trace!("{:?}", DistanceSizes::new(&inner).ok());
         Ok(Self {
             radar,
             inner,
@@ -122,10 +122,10 @@ where
     /// # async fn example(mut detector: RadarDistanceDetector<'_, impl embedded_hal_async::digital::Wait,
     /// #                             impl embedded_hal::digital::OutputPin,
     /// #                             impl embedded_hal_async::delay::DelayNs>,
-    /// #                  calibration: a121_rs::sensor::calibration::CalibrationResult) {
+    /// #                  calibration: a121_rs::CalibrationResult) {
     /// // Safe - automatically checks buffer sizes
-    /// let mut buffer = vec![0u8; detector.get_distance_buffer_size()];
-    /// let mut static_cal = vec![0u8; detector.get_static_result_buffer_size()];
+    /// let mut buffer = vec![0u8; detector.get_distance_buffer_size().unwrap()];
+    /// let mut static_cal = vec![0u8; detector.get_static_result_buffer_size().unwrap()];
     ///
     /// match detector.calibrate_detector(&calibration, &mut buffer, &mut static_cal).await {
     ///     Ok(result) => println!("Calibration successful"),
@@ -141,7 +141,7 @@ where
     ) -> Result<DynamicResult, SensorError> {
         let mut calibration_complete: bool = false;
         let mut detector_cal_result_dynamic = DynamicResult::default();
-        let distances = DistanceSizes::new(&self.inner);
+        let distances = DistanceSizes::new(&self.inner)?;
 
         // Automatic buffer size validation
         if buffer.len() < distances.buffer_size
@@ -217,7 +217,7 @@ where
     /// # async fn example(mut detector: RadarDistanceDetector<'_, impl embedded_hal_async::digital::Wait,
     /// #                             impl embedded_hal::digital::OutputPin,
     /// #                             impl embedded_hal_async::delay::DelayNs>,
-    /// #                  calibration: a121_rs::sensor::calibration::CalibrationResult) {
+    /// #                  calibration: a121_rs::CalibrationResult) {
     /// // Using compile-time sized buffers
     /// const BUFFER_SIZE: usize = calc_distance_external_heap(100, 1, 16);
     /// const CAL_SIZE: usize = 4096; // Known to be large enough
@@ -276,13 +276,17 @@ where
     }
 
     /// Returns the size of the buffer needed for static calibration results.
-    pub fn get_static_result_buffer_size(&self) -> usize {
-        DistanceSizes::new(&self.inner).detector_cal_result_static_size
+    ///
+    /// Returns [`SensorError::InitFailed`] if the SDK could not report the size.
+    pub fn get_static_result_buffer_size(&self) -> Result<usize, SensorError> {
+        Ok(DistanceSizes::new(&self.inner)?.detector_cal_result_static_size)
     }
 
     /// Returns the size of the buffer needed for distance detection.
-    pub fn get_distance_buffer_size(&self) -> usize {
-        DistanceSizes::new(&self.inner).buffer_size
+    ///
+    /// Returns [`SensorError::InitFailed`] if the SDK could not report the size.
+    pub fn get_distance_buffer_size(&self) -> Result<usize, SensorError> {
+        Ok(DistanceSizes::new(&self.inner)?.buffer_size)
     }
 
     /// Estimates memory requirements for this distance detector configuration.
@@ -334,7 +338,7 @@ where
         sensor_cal_result: &CalibrationResult,
         buffer: &mut [u8],
     ) -> Result<DynamicResult, SensorError> {
-        let distances = DistanceSizes::new(&self.inner);
+        let distances = DistanceSizes::new(&self.inner)?;
 
         // Automatic buffer size validation
         if buffer.len() < distances.buffer_size {
@@ -359,42 +363,35 @@ where
     ) -> Result<DynamicResult, SensorError> {
         let mut calibration_complete: bool = false;
         let mut detector_cal_result_dynamic = DynamicResult::default();
-        let calibration_attempt: bool;
 
-        calibration_attempt = acc_detector_distance_update_calibration(
-            self.radar.inner_sensor(),
-            self.inner.inner_mut(),
-            sensor_cal_result.ptr(),
-            buffer.as_mut_ptr() as *mut c_void,
-            buffer.len() as u32,
-            &mut detector_cal_result_dynamic.inner as *mut acc_detector_cal_result_dynamic_t,
-            &mut calibration_complete as *mut bool,
-        );
+        loop {
+            let calibration_attempt = acc_detector_distance_update_calibration(
+                self.radar.inner_sensor(),
+                self.inner.inner_mut(),
+                sensor_cal_result.ptr(),
+                buffer.as_mut_ptr() as *mut c_void,
+                buffer.len() as u32,
+                &mut detector_cal_result_dynamic.inner as *mut acc_detector_cal_result_dynamic_t,
+                &mut calibration_complete as *mut bool,
+            );
 
-        if calibration_attempt {
-            while !calibration_complete {
-                // Wait for the interrupt to occur asynchronously
-                self.radar
-                    .interrupt
-                    .wait_for_high()
-                    .await
-                    .expect("Failed to wait for interrupt");
-                acc_detector_distance_update_calibration(
-                    self.radar.inner_sensor(),
-                    self.inner.inner_mut(),
-                    sensor_cal_result.ptr(),
-                    buffer.as_mut_ptr() as *mut c_void,
-                    buffer.len() as u32,
-                    &mut detector_cal_result_dynamic.inner
-                        as *mut acc_detector_cal_result_dynamic_t,
-                    &mut calibration_complete as *mut bool,
-                );
+            if !calibration_attempt {
+                return Err(SensorError::CalibrationFailed);
             }
 
-            Ok(detector_cal_result_dynamic)
-        } else {
-            Err(SensorError::CalibrationFailed)
+            if calibration_complete {
+                break;
+            }
+
+            // Wait for the interrupt to occur asynchronously
+            self.radar
+                .interrupt
+                .wait_for_high()
+                .await
+                .expect("Failed to wait for interrupt");
         }
+
+        Ok(detector_cal_result_dynamic)
     }
 
     /// Prepares the detector for a measurement operation.
@@ -412,7 +409,7 @@ where
         sensor_cal_result: &CalibrationResult,
         buffer: &mut [u8],
     ) -> Result<(), SensorError> {
-        let distances = DistanceSizes::new(&self.inner);
+        let distances = DistanceSizes::new(&self.inner)?;
 
         // Automatic buffer size validation
         if buffer.len() < distances.buffer_size {
@@ -440,6 +437,7 @@ where
             buffer.as_mut_ptr() as *mut c_void,
             buffer.len() as u32,
         ) {
+            self.radar.mark_prepared();
             Ok(())
         } else {
             Err(SensorError::PrepareFailed)
@@ -476,7 +474,8 @@ where
         detector_cal_result_static: &mut [u8],
         detector_cal_result_dynamic: &mut DynamicResult,
     ) -> Result<DistanceResult<'_>, ProcessDataError> {
-        let distances = DistanceSizes::new(&self.inner);
+        let distances =
+            DistanceSizes::new(&self.inner).map_err(|_| ProcessDataError::ProcessingFailed)?;
 
         // Automatic buffer size validation
         if buffer.len() < distances.buffer_size

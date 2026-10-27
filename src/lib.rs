@@ -11,7 +11,7 @@
 //!
 //! # Sensor Modes and Configuration
 //! The core functionality of `a121-rs` is exposed through its sensor mode configurations, allowing
-//! users to switch between distance measurement and presence detection(_soon_). The configuration API,
+//! users to switch between distance measurement and presence detection. The configuration API,
 //! found in the module [`config`](config/index.html), enables detailed customization of the
 //! radar's parameters, such as sweep frequency, power levels, and processing options.
 //!
@@ -62,3 +62,6 @@ pub mod processing;
 pub mod radar;
 /// Sensor module for the radar sensor
 mod sensor;
+
+pub use sensor::calibration::{CalibrationInfo, CalibrationResult};
+pub use sensor::error::{ProcessDataError, SensorError};

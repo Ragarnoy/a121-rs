@@ -64,7 +64,7 @@ pub enum MaxStepLenght {
 /// Enum representing the peak sorting method
 pub enum PeakSortingMethod {
     /// Closest peak sorting method
-    Amplitude =
+    Closest =
         acc_detector_distance_peak_sorting_t_ACC_DETECTOR_DISTANCE_PEAK_SORTING_CLOSEST as isize,
     /// Strongest peak sorting method
     Strength =
@@ -75,7 +75,7 @@ impl PeakSortingMethod {
     /// Converts from FFI value, returning `None` for invalid values.
     pub const fn from_ffi(value: u32) -> Option<Self> {
         match value {
-            0 => Some(Self::Amplitude),
+            0 => Some(Self::Closest),
             1 => Some(Self::Strength),
             _ => None,
         }
@@ -83,9 +83,9 @@ impl PeakSortingMethod {
 }
 
 impl From<u32> for PeakSortingMethod {
-    /// Converts from FFI value, defaulting to Amplitude for invalid values.
+    /// Converts from FFI value, defaulting to Closest for invalid values.
     fn from(value: u32) -> Self {
-        Self::from_ffi(value).unwrap_or(Self::Amplitude)
+        Self::from_ffi(value).unwrap_or(Self::Closest)
     }
 }
 
@@ -134,7 +134,7 @@ impl RadarDistanceConfig {
     /// Create a balanced distance detection configuration.
     pub fn balanced() -> Self {
         let mut config = Self::new();
-        config.set_interval(15.0..=17.0);
+        config.set_interval(0.5..=2.1);
         config.set_max_step_length(MaxStepLenght::ProfileBased);
         config.set_max_profile(AccProfile5);
         config.set_reflector_shape(ReflectorShape::Generic);

@@ -3,8 +3,8 @@ use a121_sys::acc_config_prf_t;
 /// Pulse Repetition Frequency (PRF)
 ///
 /// PRF is the frequency at which pulses are sent out from the radar system.
-/// The measurement time is approximately proportional to the PRF. The higher
-/// the PRF, the shorter the measurement time.
+/// The measurement time is approximately inversely proportional to the PRF.
+/// The higher the PRF, the shorter the measurement time.
 ///
 /// This parameter sets the Maximum Measurable Distance (MMD) and the
 /// Maximum Unambiguous Range (MUR). MMD is the maximum value for the end
@@ -54,12 +54,6 @@ impl TryFrom<acc_config_prf_t> for PulseRepetitionFrequency {
     }
 }
 
-impl From<PulseRepetitionFrequency> for u32 {
-    fn from(prf: PulseRepetitionFrequency) -> Self {
-        prf.value()
-    }
-}
-
 impl PulseRepetitionFrequency {
     /// Returns the PRF value in Hz.
     pub const fn value(&self) -> u32 {
@@ -96,5 +90,41 @@ impl PulseRepetitionFrequency {
             5 => Some(PulseRepetitionFrequency::Prf5_2Mhz),
             _ => None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const ALL: [PulseRepetitionFrequency; 6] = [
+        PulseRepetitionFrequency::Prf19_5Mhz,
+        PulseRepetitionFrequency::Prf15_6Mhz,
+        PulseRepetitionFrequency::Prf13_0Mhz,
+        PulseRepetitionFrequency::Prf8_7Mhz,
+        PulseRepetitionFrequency::Prf6_5Mhz,
+        PulseRepetitionFrequency::Prf5_2Mhz,
+    ];
+
+    #[test]
+    fn ffi_round_trip() {
+        for prf in ALL {
+            let raw = prf as acc_config_prf_t;
+            assert_eq!(PulseRepetitionFrequency::try_from(raw), Ok(prf));
+            assert_eq!(PulseRepetitionFrequency::from_ffi(raw), Some(prf));
+        }
+        assert!(PulseRepetitionFrequency::try_from(6).is_err());
+    }
+
+    #[test]
+    fn discriminants_match_sdk() {
+        assert_eq!(
+            PulseRepetitionFrequency::Prf19_5Mhz as acc_config_prf_t,
+            a121_sys::acc_config_prf_t_ACC_CONFIG_PRF_19_5_MHZ
+        );
+        assert_eq!(
+            PulseRepetitionFrequency::Prf5_2Mhz as acc_config_prf_t,
+            a121_sys::acc_config_prf_t_ACC_CONFIG_PRF_5_2_MHZ
+        );
     }
 }

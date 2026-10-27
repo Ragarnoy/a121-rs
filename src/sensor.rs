@@ -163,25 +163,6 @@ where
         Ok(calibration_result)
     }
 
-    ///
-    /// Initiates the calibration process for the sensor and waits asynchronously for a sensor
-    /// interrupt to indicate the completion or progress of the calibration.
-    /// The sensor must be powered on before calling this function.
-    ///
-    /// The function starts the calibration process and then waits for a sensor interrupt signal.
-    /// Upon receiving the interrupt signal, the function completes, returning the current
-    /// calibration result.
-    ///
-    /// # Arguments
-    /// * `buffer` - A buffer used during calibration. A larger buffer might reduce the number of
-    ///   transactions between the host and the sensor. The buffer is only used during the duration
-    ///   of the calibration call.
-    ///
-    /// # Returns
-    /// `Ok(CalibrationResult)` containing the result of the calibration if the calibration step
-    /// was successful.
-    /// If the calibration step fails, returns `Err(SensorError::FailedCalibration)`.
-
     /// Prepares the sensor for measurement with a given configuration.
     ///
     /// It's possible to reconfigure the sensor by calling this function multiple times.

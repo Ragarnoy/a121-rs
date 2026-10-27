@@ -117,7 +117,7 @@ where
         sensor_cal_result: &CalibrationResult,
         buffer: &mut [u8],
     ) -> Result<(), SensorError> {
-        let buffer_size = self.get_buffer_size();
+        let buffer_size = self.get_buffer_size()?;
 
         // Automatic buffer size validation
         if buffer.len() < buffer_size {
@@ -150,19 +150,24 @@ where
         );
 
         if prepare_success {
+            self.radar.mark_prepared();
             Ok(())
         } else {
             Err(SensorError::PrepareFailed)
         }
     }
 
-    pub fn get_buffer_size(&self) -> usize {
-        use core::mem::MaybeUninit;
-
-        let mut buffer_size = MaybeUninit::<u32>::uninit();
-        unsafe {
-            acc_detector_presence_get_buffer_size(self.inner.inner(), buffer_size.as_mut_ptr());
-            buffer_size.assume_init() as usize
+    /// Returns the size of the buffer needed by the presence detector.
+    ///
+    /// Returns [`SensorError::InitFailed`] if the SDK could not report the size.
+    pub fn get_buffer_size(&self) -> Result<usize, SensorError> {
+        let mut buffer_size: u32 = 0;
+        let success =
+            unsafe { acc_detector_presence_get_buffer_size(self.inner.inner(), &mut buffer_size) };
+        if success {
+            Ok(buffer_size as usize)
+        } else {
+            Err(SensorError::InitFailed)
         }
     }
 
@@ -228,7 +233,9 @@ where
         &mut self,
         buffer: &'buf mut [u8],
     ) -> Result<PresenceResult<'buf>, ProcessDataError> {
-        let buffer_size = self.get_buffer_size();
+        let buffer_size = self
+            .get_buffer_size()
+            .map_err(|_| ProcessDataError::ProcessingFailed)?;
 
         // Automatic buffer size validation
         if buffer.len() < buffer_size {

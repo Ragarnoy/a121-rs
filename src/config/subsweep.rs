@@ -125,12 +125,14 @@ impl Subsweep {
         unsafe { acc_config_subsweep_enable_tx_get(config.inner.as_ptr(), self.index) }
     }
 
-    /// Sets transmitter power for subsweep
+    /// Sets Pulse Repetition Frequency for subsweep
     /// # Arguments
     /// * `config` - A reference to a `Config` instance.
-    /// µ 'prf' - Pulse Repetition Frequency for the subsweep.
+    /// * `prf` - Pulse Repetition Frequency for the subsweep.
     pub fn set_prf(&self, config: &mut RadarConfig, prf: PulseRepetitionFrequency) {
-        unsafe { acc_config_subsweep_prf_set(config.inner.as_ptr(), prf.into(), self.index) };
+        unsafe {
+            acc_config_subsweep_prf_set(config.inner.as_ptr(), prf as acc_config_prf_t, self.index)
+        };
     }
 
     /// Gets Pulse Repetition Frequency for subsweep
