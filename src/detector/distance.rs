@@ -12,7 +12,7 @@ use a121_sys::*;
 
 use crate::detector::distance::config::RadarDistanceConfig;
 use crate::detector::distance::results::DistanceSizes;
-use crate::radar::{Radar, RadarState};
+use crate::radar::{check_buffer, Radar, RadarState};
 use crate::sensor::calibration::CalibrationResult;
 use crate::sensor::error::{ProcessDataError, SensorError};
 use results::{DistanceResult, DynamicResult};
@@ -110,6 +110,8 @@ where
     /// # Errors
     ///
     /// Returns [`SensorError::BufferTooSmall`] if either buffer is too small.
+    /// Returns [`SensorError::BufferMisaligned`] if `buffer` is not aligned for any built-in
+    /// type; see [`AlignedBuffer`](crate::AlignedBuffer).
     /// Use [`get_distance_buffer_size`](Self::get_distance_buffer_size) and
     /// [`get_static_result_buffer_size`](Self::get_static_result_buffer_size)
     /// to determine required sizes, or use compile-time calculation functions
@@ -124,8 +126,8 @@ where
     /// #                             impl embedded_hal_async::delay::DelayNs>,
     /// #                  calibration: a121_rs::CalibrationResult) {
     /// // Safe - automatically checks buffer sizes
-    /// let mut buffer = vec![0u8; detector.get_distance_buffer_size().unwrap()];
-    /// let mut static_cal = vec![0u8; detector.get_static_result_buffer_size().unwrap()];
+    /// let mut buffer = a121_rs::AlignedBuffer::new(detector.get_distance_buffer_size().unwrap());
+    /// let mut static_cal = a121_rs::AlignedBuffer::new(detector.get_static_result_buffer_size().unwrap());
     ///
     /// match detector.calibrate_detector(&calibration, &mut buffer, &mut static_cal).await {
     ///     Ok(result) => println!("Calibration successful"),
@@ -143,10 +145,9 @@ where
         let mut detector_cal_result_dynamic = DynamicResult::default();
         let distances = DistanceSizes::new(&self.inner)?;
 
-        // Automatic buffer size validation
-        if buffer.len() < distances.buffer_size
-            || detector_cal_result_static.len() < distances.detector_cal_result_static_size
-        {
+        // Automatic buffer size and alignment validation
+        check_buffer(buffer, distances.buffer_size)?;
+        if detector_cal_result_static.len() < distances.detector_cal_result_static_size {
             return Err(SensorError::BufferTooSmall);
         }
 
@@ -181,7 +182,7 @@ where
                 .interrupt
                 .wait_for_high()
                 .await
-                .expect("Failed to wait for interrupt");
+                .map_err(|_| SensorError::CalibrationFailed)?;
         }
 
         Ok(detector_cal_result_dynamic)
@@ -269,7 +270,7 @@ where
                 .interrupt
                 .wait_for_high()
                 .await
-                .expect("Failed to wait for interrupt");
+                .map_err(|_| SensorError::CalibrationFailed)?;
         }
 
         Ok(detector_cal_result_dynamic)
@@ -331,6 +332,8 @@ where
     /// # Errors
     ///
     /// Returns [`SensorError::BufferTooSmall`] if buffer is too small.
+    /// Returns [`SensorError::BufferMisaligned`] if `buffer` is not aligned for any built-in
+    /// type; see [`AlignedBuffer`](crate::AlignedBuffer).
     ///
     /// For the unchecked version, see [`update_calibration_unchecked`](Self::update_calibration_unchecked).
     pub async fn update_calibration(
@@ -340,10 +343,8 @@ where
     ) -> Result<DynamicResult, SensorError> {
         let distances = DistanceSizes::new(&self.inner)?;
 
-        // Automatic buffer size validation
-        if buffer.len() < distances.buffer_size {
-            return Err(SensorError::BufferTooSmall);
-        }
+        // Automatic buffer size and alignment validation
+        check_buffer(buffer, distances.buffer_size)?;
 
         unsafe {
             self.update_calibration_unchecked(sensor_cal_result, buffer)
@@ -388,7 +389,7 @@ where
                 .interrupt
                 .wait_for_high()
                 .await
-                .expect("Failed to wait for interrupt");
+                .map_err(|_| SensorError::CalibrationFailed)?;
         }
 
         Ok(detector_cal_result_dynamic)
@@ -402,6 +403,8 @@ where
     /// # Errors
     ///
     /// Returns [`SensorError::BufferTooSmall`] if buffer is too small.
+    /// Returns [`SensorError::BufferMisaligned`] if `buffer` is not aligned for any built-in
+    /// type; see [`AlignedBuffer`](crate::AlignedBuffer).
     ///
     /// For the unchecked version, see [`prepare_detector_unchecked`](Self::prepare_detector_unchecked).
     pub fn prepare_detector(
@@ -411,10 +414,8 @@ where
     ) -> Result<(), SensorError> {
         let distances = DistanceSizes::new(&self.inner)?;
 
-        // Automatic buffer size validation
-        if buffer.len() < distances.buffer_size {
-            return Err(SensorError::BufferTooSmall);
-        }
+        // Automatic buffer size and alignment validation
+        check_buffer(buffer, distances.buffer_size)?;
 
         unsafe { self.prepare_detector_unchecked(sensor_cal_result, buffer) }
     }
@@ -429,6 +430,9 @@ where
         sensor_cal_result: &CalibrationResult,
         buffer: &mut [u8],
     ) -> Result<(), SensorError> {
+        let buffer_size = DistanceSizes::new(&self.inner)?.buffer_size;
+        // The sensor is no longer prepared as before, even if this prepare fails
+        self.radar.unprepare();
         if acc_detector_distance_prepare(
             self.inner.inner(),
             self.config.inner.as_ptr(),
@@ -437,7 +441,7 @@ where
             buffer.as_mut_ptr() as *mut c_void,
             buffer.len() as u32,
         ) {
-            self.radar.mark_prepared();
+            self.radar.mark_prepared(buffer_size);
             Ok(())
         } else {
             Err(SensorError::PrepareFailed)
@@ -466,6 +470,8 @@ where
     /// # Errors
     ///
     /// Returns [`ProcessDataError::BufferTooSmall`] if buffers are too small.
+    /// Returns [`ProcessDataError::BufferMisaligned`] if `buffer` is not aligned for any built-in
+    /// type; see [`AlignedBuffer`](crate::AlignedBuffer).
     ///
     /// For the unchecked version, see [`process_data_unchecked`](Self::process_data_unchecked).
     pub fn process_data(
@@ -477,10 +483,9 @@ where
         let distances =
             DistanceSizes::new(&self.inner).map_err(|_| ProcessDataError::ProcessingFailed)?;
 
-        // Automatic buffer size validation
-        if buffer.len() < distances.buffer_size
-            || detector_cal_result_static.len() < distances.detector_cal_result_static_size
-        {
+        // Automatic buffer size and alignment validation
+        check_buffer(buffer, distances.buffer_size)?;
+        if detector_cal_result_static.len() < distances.detector_cal_result_static_size {
             return Err(ProcessDataError::BufferTooSmall);
         }
 

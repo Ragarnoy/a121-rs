@@ -106,19 +106,25 @@ where
         })
     }
 
-    pub async fn reset_sensor(&mut self) {
-        self.disable_sensor().await;
-        self.enable_sensor().await;
+    pub async fn reset_sensor(&mut self) -> Result<(), SensorError> {
+        self.disable_sensor().await?;
+        self.enable_sensor().await
     }
 
-    pub async fn enable_sensor(&mut self) {
-        self.enable_pin.set_high().unwrap();
+    pub async fn enable_sensor(&mut self) -> Result<(), SensorError> {
+        self.enable_pin
+            .set_high()
+            .map_err(|_| SensorError::EnablePinFailed)?;
         self.dly.delay_ms(2).await;
+        Ok(())
     }
 
-    pub async fn disable_sensor(&mut self) {
-        self.enable_pin.set_low().unwrap();
+    pub async fn disable_sensor(&mut self) -> Result<(), SensorError> {
+        self.enable_pin
+            .set_low()
+            .map_err(|_| SensorError::EnablePinFailed)?;
         self.dly.delay_ms(2).await;
+        Ok(())
     }
 
     /// Calibrates the sensor asynchronously.
@@ -130,7 +136,7 @@ where
         let mut calibration_complete: bool = false;
         let mut calibration_result = CalibrationResult::new();
 
-        self.reset_sensor().await;
+        self.reset_sensor().await?;
 
         loop {
             let calibration_attempt = unsafe {
@@ -157,7 +163,7 @@ where
             interrupt
                 .wait_for_high()
                 .await
-                .expect("Failed to wait for interrupt");
+                .map_err(|_| SensorError::CalibrationFailed)?;
         }
 
         Ok(calibration_result)
@@ -252,7 +258,7 @@ where
             interrupt
                 .wait_for_high()
                 .await
-                .expect("Failed to wait for interrupt");
+                .map_err(|_| SensorError::MeasurementError)?;
             Ok(())
         } else {
             Err(SensorError::MeasurementError)

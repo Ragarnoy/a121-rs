@@ -149,11 +149,12 @@ impl AccHalImpl {
 
 use alloc::alloc::{alloc, dealloc, Layout};
 
+/// Alignment of any built-in type, which the SDK requires for memory and buffers it is given: 8
+/// bytes on 32-bit Arm, and 16 bytes on RISC-V and 64-bit targets, where `long double` is 16 bytes.
+pub(crate) const SDK_ALIGN: usize = if cfg!(target_arch = "arm") { 8 } else { 16 };
+
 /// Size and alignment of the header placed in front of each SDK allocation.
-///
-/// The SDK needs memory aligned for any built-in type: 8 bytes on 32-bit Arm, and 16 bytes on
-/// RISC-V and 64-bit targets, where `long double` is 16 bytes.
-const ALLOC_HEADER: usize = if cfg!(target_arch = "arm") { 8 } else { 16 };
+const ALLOC_HEADER: usize = SDK_ALIGN;
 const _: () = assert!(core::mem::size_of::<usize>() <= ALLOC_HEADER);
 
 /// Allocates memory for use by the radar SDK.

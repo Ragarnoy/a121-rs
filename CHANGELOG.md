@@ -32,6 +32,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sensor. A successful detector `prepare_detector` moves the radar to `Ready`.
 - `PresenceConfig::set_profile` disables automatic profile selection, without which the SDK ignores
   the profile.
+- **Breaking:** `Radar::config` and `Radar::processing` are no longer public fields. Use `config()`,
+  `config_mut()` and `processing()`; `config_mut()` makes the radar leave the `Ready` state, since the
+  sensor must be prepared again for a new configuration. `Radar::process` runs the processing.
+- **Breaking:** `Radar::hibernate_on` and `hibernate_off` are `async`: they now disable and enable the
+  sensor with the enable pin, as the SDK requires.
+- **Breaking:** `Radar::reset_sensor`, `Processing::new` and `Processing::execute` return `Result`.
+- **Breaking:** `Radar::measure`, `Processing::execute` and the checked detector functions
+  (`calibrate_detector`, `update_calibration`, `prepare_detector`, `process_data`,
+  `detect_presence`) require buffers aligned for any built-in type (see `RadarBuffer` and
+  `AlignedBuffer`). `measure` also requires the buffer size of the prepared configuration or detector.
+- **Breaking:** removed `PREPARE_BUFFER_SIZE`. The scratch buffer is checked against
+  `RadarConfig::config_buffer_size()` at runtime instead.
 - The xe125 example links newlib's `sinf`, `cosf` and `tanf` instead of the compiler_builtins ones,
   which saves about 10 KB of flash, and logs at `info` level by default.
 
@@ -45,6 +57,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `SensorError`, `ProcessDataError`, `CalibrationResult` and `CalibrationInfo` are re-exported from the
   crate root. They appear in public signatures but were not nameable before.
 - Host unit tests, run against the stub libraries.
+- `RadarBuffer<N>` and `AlignedBuffer`: byte buffers aligned as the SDK requires.
+- `SensorError::BufferMisaligned`, `SensorError::EnablePinFailed` and
+  `ProcessDataError::BufferMisaligned`.
 
 ### Fixed
 - `libm` feature: `cabsf` and `cexpf` had the wrong signatures. They took a single `f32` instead of a
@@ -56,6 +71,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `RadarConfig::set_sweep_mode(SweepMode::Continuous { .. })` always failed because continuous mode
   was enabled before the sweep rate and frame rate were set.
 - The compile-time check that `SCRATCH_SIZE >= 2560` in `Radar` was never evaluated.
+- `Radar::prepare_sensor` creates the processing from the prepared configuration. It used to be created
+  once from the default configuration, so its metadata did not match a reconfigured sensor.
+- Hibernation never powered the sensor down: the enable pin was not toggled.
+- The radar scratch buffer was not aligned for any built-in type, and preparation used a fixed
+  2560-byte slice instead of the configuration's buffer size.
+- `Processing::execute` did not check the buffer length.
+- An enable pin or interrupt error panicked instead of returning an error, including in the distance
+  detector's calibration.
+- A failed detector prepare left the radar ready with its previous preparation.
 - `Hwaas` accepted 0. The SDK range is 1–511.
 - `RadarDistanceDetector::update_calibration` ignored SDK failures after the first step and could wait
   forever.

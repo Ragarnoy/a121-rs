@@ -6,6 +6,7 @@ use core::cell::RefCell;
 use a121_rs::detector::distance::RadarDistanceDetector;
 use a121_rs::radar;
 use a121_rs::radar::Radar;
+use a121_rs::RadarBuffer;
 use defmt::{info, warn};
 use embassy_executor::Spawner;
 use embassy_stm32::dma::NoDma;
@@ -81,7 +82,7 @@ async fn main(spawner: Spawner) {
         .await
         .unwrap();
     info!("Radar enabled");
-    let mut buffer = [0u8; 2560];
+    let mut buffer = RadarBuffer::<2560>::new();
     let mut calibration = loop {
         buffer.fill(0);
         if let Ok(calibration) = radar.calibrate().await {
@@ -100,8 +101,8 @@ async fn main(spawner: Spawner) {
     info!("Calibration complete!");
     radar.prepare_sensor(&mut calibration).unwrap();
     let mut distance = RadarDistanceDetector::new(&mut radar).unwrap();
-    let mut buffer = [0u8; 2560 * 3];
-    let mut static_call_result = [0u8; 2560];
+    let mut buffer = RadarBuffer::<{ 2560 * 3 }>::new();
+    let mut static_call_result = RadarBuffer::<2560>::new();
     let mut dynamic_call_result = distance
         .calibrate_detector(&calibration, &mut buffer, &mut static_call_result)
         .await
