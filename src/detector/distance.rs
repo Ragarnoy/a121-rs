@@ -240,7 +240,8 @@ where
     }
 
     /// Returns the state of the detector's radar, for example to see whether it is
-    /// [faulted](RadarState::Faulted) and needs [`calibrate`](Self::calibrate).
+    /// [faulted](RadarState::Faulted). Recover it with [`calibrate`](Self::calibrate), which also
+    /// gives a fresh sensor calibration, then prepare the detector again.
     pub fn radar_state(&self) -> RadarState {
         self.radar.state()
     }
@@ -427,6 +428,32 @@ where
     /// This function performs a calibration operation on the radar, necessary for accurate distance measurements.
     pub async fn calibrate(&mut self) -> Result<CalibrationResult, SensorError> {
         self.radar.calibrate().await
+    }
+
+    /// Puts the radar in hibernation between frames, keeping the detector and the sensor's state.
+    ///
+    /// See [`Radar::hibernate_on`](crate::radar::Radar::hibernate_on).
+    pub async fn hibernate_on(&mut self) -> Result<(), SensorError> {
+        self.radar.hibernate_on().await
+    }
+
+    /// Wakes the radar from hibernation, with the sensor's state restored. As without
+    /// hibernation, prepare the detector before each measurement until
+    /// [`process_data`](Self::process_data) reports a result.
+    ///
+    /// See [`Radar::hibernate_off`](crate::radar::Radar::hibernate_off).
+    pub async fn hibernate_off(&mut self) -> Result<(), SensorError> {
+        self.radar.hibernate_off().await
+    }
+
+    /// Power-cycles the sensor, which recovers a [faulted](RadarState::Faulted) radar. The
+    /// detector must be prepared again before measuring. To recover from a fault,
+    /// [`calibrate`](Self::calibrate) is usually better: it power-cycles too, and gives a fresh
+    /// sensor calibration instead of reusing one taken before the fault.
+    ///
+    /// See [`Radar::reset_sensor`](crate::radar::Radar::reset_sensor).
+    pub async fn reset_sensor(&mut self) -> Result<(), SensorError> {
+        self.radar.reset_sensor().await
     }
 
     /// Processes the data collected from a distance measurement operation.
