@@ -27,7 +27,8 @@ mod printf;
 /// The most sensors that can be in use at once, each with its own SPI device.
 ///
 /// The SDK does not document whether it is reentrant, so SDK calls on different radars must not
-/// run concurrently, for example from executors at different interrupt priorities.
+/// run concurrently, for example from executors at different interrupt priorities or on
+/// different cores.
 pub const MAX_SENSORS: usize = 4;
 
 /// Transfers a buffer in place on the SPI device behind the pointer, returning `false` on failure.
@@ -59,11 +60,15 @@ impl<const N: usize> SlotTable<N> {
         Self { slots: [None; N] }
     }
 
-    fn find(&mut self, sensor_id: u32) -> Option<&mut Slot> {
+    fn position(&self, sensor_id: u32) -> Option<usize> {
         self.slots
-            .iter_mut()
-            .flatten()
-            .find(|slot| slot.sensor_id == sensor_id)
+            .iter()
+            .position(|slot| slot.is_some_and(|slot| slot.sensor_id == sensor_id))
+    }
+
+    fn find(&mut self, sensor_id: u32) -> Option<&mut Slot> {
+        let index = self.position(sensor_id)?;
+        self.slots[index].as_mut()
     }
 
     /// Fails with [`SensorError::SensorUnavailable`] if the sensor is already in use or every
@@ -92,12 +97,8 @@ impl<const N: usize> SlotTable<N> {
     }
 
     fn release(&mut self, sensor_id: u32) {
-        if let Some(slot) = self
-            .slots
-            .iter_mut()
-            .find(|slot| slot.is_some_and(|slot| slot.sensor_id == sensor_id))
-        {
-            *slot = None;
+        if let Some(index) = self.position(sensor_id) {
+            self.slots[index] = None;
         }
     }
 

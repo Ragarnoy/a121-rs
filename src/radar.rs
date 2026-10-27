@@ -245,8 +245,8 @@ where
     /// register the HAL or create the configuration or sensor, or
     /// [`SensorError::SpiTransferFailed`]. `RadarInitError` converts to [`SensorError`] with `?`.
     ///
-    /// Dropping the future before it completes, for example on a timeout, drops the SPI device
-    /// with it.
+    /// Dropping the future before it completes, for example on a timeout, loses the SPI device:
+    /// the `&'static mut` cannot be handed back.
     pub async fn new(
         id: u32,
         spi: &'static mut SPI,
@@ -311,7 +311,7 @@ where
 
     /// Destroys the radar and returns its SPI device and pins, for example to create it again.
     ///
-    /// The sensor stays powered.
+    /// The enable pin is left as it is: high, unless the radar was hibernating.
     pub fn free(self) -> (&'static mut SPI, SINT, ENABLE, DLY) {
         let Radar {
             config,
