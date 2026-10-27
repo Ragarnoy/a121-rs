@@ -21,7 +21,6 @@ use esp_hal::{
     timer::TimerGroup,
 };
 mod mulsc3;
-mod spi_adapter;
 use a121_rs::config::profile::RadarProfile::AccProfile5;
 use a121_rs::detector::distance::{config::*, RadarDistanceDetector};
 use a121_rs::radar::Radar;
@@ -93,7 +92,6 @@ async fn main(_spawner: Spawner) {
     let spi_bus = Spi::new(peripherals.SPI2, 1u32.MHz(), SpiMode::Mode0, &clocks);
     let spi_bus = spi_bus.with_pins(Some(sclk), Some(mosi), Some(miso), gpio::NO_PIN);
     let spi_device = ExclusiveDevice::new_no_delay(spi_bus, cs.into_push_pull_output());
-    let spi_device = spi_adapter::SpiAdapter::new(spi_device);
     let spi_device = static_cell::make_static!(spi_device);
 
     let mut radar = Radar::new(1, spi_device, radar_int, radar_en, Delay)

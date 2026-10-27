@@ -23,7 +23,6 @@ use esp_hal::{
     timer::TimerGroup,
 };
 use esp_println::println;
-mod spi_adapter;
 
 static COUNT: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
 defmt::timestamp!(
@@ -70,7 +69,6 @@ async fn init(_spawner: Spawner) {
     let spi_bus = Spi::new(p.SPI2, 40u32.MHz(), SpiMode::Mode0, &clocks);
     let spi_bus = spi_bus.with_pins(Some(sclk), Some(mosi), Some(miso), gpio::NO_PIN);
     let spi_device = ExclusiveDevice::new_no_delay(spi_bus, cs.into_push_pull_output());
-    let spi_device = spi_adapter::SpiAdapter::new(spi_device);
     let spi_device = static_cell::make_static!(spi_device);
 
     //gpio_r_en.set_high().unwrap();

@@ -2,20 +2,22 @@ pub mod version;
 
 use a121_sys::{acc_sensor_connected, acc_sensor_id_t, acc_sensor_t};
 use embedded_hal::digital::OutputPin;
-use embedded_hal::spi::{ErrorKind as SpiErrorKind, SpiDevice};
+use embedded_hal::spi::SpiDevice;
 use embedded_hal_async::delay::DelayNs;
 use embedded_hal_async::digital::Wait;
 
 use alloc::vec;
 use alloc::vec::Vec;
 use core::ops::{Deref, DerefMut};
+use core::ptr::NonNull;
 
 use crate::config::RadarConfig;
-use crate::hal::{spi_checked, AccHalImpl, SDK_ALIGN};
+pub use crate::hal::MAX_SENSORS;
+use crate::hal::{ensure_registered, register_spi, spi_checked, SpiRegistration, SDK_ALIGN};
 use crate::processing::{Processing, ProcessingResult};
 use crate::sensor::calibration::CalibrationResult;
 use crate::sensor::error::SensorError;
-use crate::sensor::Sensor;
+use crate::sensor::{InnerSensor, Sensor};
 
 /// Default scratch buffer size for radar operations (calibration and sensor preparation).
 ///
@@ -148,17 +150,20 @@ enum Prepared {
 /// The `SCRATCH_SIZE` const generic sets the size of the internal scratch buffer used for
 /// calibration and preparation. [`DEFAULT_SCRATCH_BUFFER_SIZE`] fits most configurations.
 ///
+/// Up to [`MAX_SENSORS`] radars can exist at once, each with its own sensor id and SPI device.
+///
 /// # Example
 ///
 /// ```ignore
 /// // Use default buffer size
-/// let radar: Radar<_, _, _> = Radar::new(id, spi, interrupt, enable, delay).await?;
+/// let radar: Radar<_, _, _, _> = Radar::new(id, spi, interrupt, enable, delay).await?;
 ///
 /// // Use custom buffer size for larger configurations
-/// let radar: Radar<_, _, _, 8192> = Radar::new(id, spi, interrupt, enable, delay).await?;
+/// let radar: Radar<_, _, _, _, 8192> = Radar::new(id, spi, interrupt, enable, delay).await?;
 /// ```
-pub struct Radar<SINT, ENABLE, DLY, const SCRATCH_SIZE: usize = DEFAULT_SCRATCH_BUFFER_SIZE>
+pub struct Radar<SPI, SINT, ENABLE, DLY, const SCRATCH_SIZE: usize = DEFAULT_SCRATCH_BUFFER_SIZE>
 where
+    SPI: SpiDevice<u8> + Send + 'static,
     SINT: Wait,
     ENABLE: OutputPin,
     DLY: DelayNs,
@@ -167,29 +172,119 @@ where
     pub(crate) config: RadarConfig,
     sensor: Sensor<ENABLE, DLY>,
     pub(crate) interrupt: SINT,
-    _hal: AccHalImpl,
     state: RadarState,
     /// Kept while hibernating, so waking up knows whether the sensor is still prepared
     prepared: Prepared,
     scratch: RadarBuffer<SCRATCH_SIZE>,
+    /// Releases the sensor's SPI device. Declared after `sensor`, so the sensor is destroyed
+    /// first.
+    registration: SpiRegistration,
+    /// The SPI device, used through the HAL until [`Radar::free`] hands it back.
+    spi: NonNull<SPI>,
 }
 
-impl<SINT, ENABLE, DLY, const SCRATCH_SIZE: usize> Radar<SINT, ENABLE, DLY, SCRATCH_SIZE>
+/// A failed [`Radar::new`], with the resources it was given, so it can be retried.
+pub struct RadarInitError<SPI: 'static, SINT, ENABLE, DLY> {
+    /// Why the radar could not be created.
+    pub error: SensorError,
+    /// The SPI device.
+    pub spi: &'static mut SPI,
+    /// The sensor interrupt pin.
+    pub interrupt: SINT,
+    /// The sensor enable pin.
+    pub enable_pin: ENABLE,
+    /// The delay provider.
+    pub delay: DLY,
+}
+
+impl<SPI, SINT, ENABLE, DLY> From<RadarInitError<SPI, SINT, ENABLE, DLY>> for SensorError {
+    fn from(error: RadarInitError<SPI, SINT, ENABLE, DLY>) -> Self {
+        error.error
+    }
+}
+
+impl<SPI, SINT, ENABLE, DLY> core::fmt::Debug for RadarInitError<SPI, SINT, ENABLE, DLY> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("RadarInitError")
+            .field("error", &self.error)
+            .finish_non_exhaustive()
+    }
+}
+
+impl<SPI, SINT, ENABLE, DLY> core::fmt::Display for RadarInitError<SPI, SINT, ENABLE, DLY> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "radar creation failed: {}", self.error)
+    }
+}
+
+#[cfg(feature = "defmt")]
+impl<SPI, SINT, ENABLE, DLY> defmt::Format for RadarInitError<SPI, SINT, ENABLE, DLY> {
+    fn format(&self, f: defmt::Formatter) {
+        defmt::write!(f, "RadarInitError({})", self.error)
+    }
+}
+
+impl<SPI, SINT, ENABLE, DLY, const SCRATCH_SIZE: usize> Radar<SPI, SINT, ENABLE, DLY, SCRATCH_SIZE>
 where
+    SPI: SpiDevice<u8> + Send + 'static,
     SINT: Wait,
     ENABLE: OutputPin,
     DLY: DelayNs,
 {
-    pub async fn new<SPI>(
+    /// Powers the sensor up and creates the radar for sensor `id`, which talks to the sensor
+    /// through `spi`.
+    ///
+    /// # Errors
+    ///
+    /// Returns the resources with the error, so creation can be retried:
+    /// [`SensorError::SensorUnavailable`] if a radar for `id` exists or [`MAX_SENSORS`] radars
+    /// exist, [`SensorError::EnablePinFailed`], [`SensorError::InitFailed`] if the SDK could not
+    /// register the HAL or create the configuration or sensor, or
+    /// [`SensorError::SpiTransferFailed`]. `RadarInitError` converts to [`SensorError`] with `?`.
+    pub async fn new(
         id: u32,
         spi: &'static mut SPI,
         interrupt: SINT,
         mut enable_pin: ENABLE,
         mut delay: DLY,
-    ) -> Result<Radar<SINT, ENABLE, DLY, SCRATCH_SIZE>, SensorError>
-    where
-        SPI: SpiDevice<u8, Error = SpiErrorKind> + Send + 'static,
-    {
+    ) -> Result<Self, RadarInitError<SPI, SINT, ENABLE, DLY>> {
+        // Only raw pointers to the device are kept from here on, so handing the reference back
+        // does not invalidate them
+        let spi = NonNull::from(spi);
+        match Self::create(id, spi, &mut enable_pin, &mut delay).await {
+            Ok((registration, config, inner)) => Ok(Radar {
+                id,
+                config,
+                sensor: Sensor::new(inner, enable_pin, delay),
+                interrupt,
+                state: RadarState::Enabled,
+                prepared: Prepared::None,
+                scratch: RadarBuffer::new(),
+                registration,
+                spi,
+            }),
+            Err(error) => Err(RadarInitError {
+                error,
+                // SAFETY: the device's registration was dropped, so this is its only user again
+                spi: unsafe { &mut *spi.as_ptr() },
+                interrupt,
+                enable_pin,
+                delay,
+            }),
+        }
+    }
+
+    async fn create(
+        id: u32,
+        spi: NonNull<SPI>,
+        enable_pin: &mut ENABLE,
+        delay: &mut DLY,
+    ) -> Result<(SpiRegistration, RadarConfig, InnerSensor), SensorError> {
+        ensure_registered()?;
+        // SAFETY: `spi` comes from a `&'static mut SPI` that only the HAL uses until the
+        // registration is dropped
+        let registration = unsafe { register_spi(id, spi) }?;
+
         // Extended power cycle: ensure sensor is off first for longer
         enable_pin
             .set_low()
@@ -198,31 +293,36 @@ where
         enable_pin
             .set_high()
             .map_err(|_| SensorError::EnablePinFailed)?;
-        delay.delay_ms(50).await; // Longer startup time
+        // Startup time, then time for the sensor to settle before it is created
+        delay.delay_ms(60).await;
 
-        // Create and register HAL before creating sensor
-        let hal = AccHalImpl::new(spi);
-        hal.register()?;
-
-        // Additional delay after HAL registration for sensor to stabilize
-        delay.delay_ms(10).await;
-
-        // Create configuration first
         let config = RadarConfig::new()?;
+        #[cfg(feature = "defmt")]
+        defmt::trace!("Creating sensor {}", id);
+        let sensor = InnerSensor::new(id)?;
+        Ok((registration, config, sensor))
+    }
 
-        // Create sensor after HAL is registered and sensor is stable
-        let sensor = Sensor::new(id, enable_pin, delay)?;
-
-        Ok(Radar {
-            id,
+    /// Destroys the radar and returns its SPI device and pins, for example to create it again.
+    ///
+    /// The sensor stays powered.
+    pub fn free(self) -> (&'static mut SPI, SINT, ENABLE, DLY) {
+        let Radar {
             config,
-            interrupt,
             sensor,
-            _hal: hal,
-            state: RadarState::Enabled,
-            prepared: Prepared::None,
-            scratch: RadarBuffer::new(),
-        })
+            interrupt,
+            prepared,
+            registration,
+            spi,
+            ..
+        } = self;
+        let (enable_pin, delay) = sensor.into_parts();
+        drop(prepared);
+        drop(config);
+        drop(registration);
+        // SAFETY: the sensor is destroyed and the device's registration dropped, so this is its
+        // only user again
+        (unsafe { &mut *spi.as_ptr() }, interrupt, enable_pin, delay)
     }
 
     /// Returns the scratch buffer size for this radar instance.
@@ -518,7 +618,10 @@ where
     ///
     /// Returns `false` if an SPI transfer failed while checking.
     pub fn is_connected(&self) -> bool {
-        spi_checked(|| unsafe { acc_sensor_connected(self.id as acc_sensor_id_t) }).unwrap_or(false)
+        spi_checked(self.id, || unsafe {
+            acc_sensor_connected(self.id as acc_sensor_id_t)
+        })
+        .unwrap_or(false)
     }
 
     /// Logs the sensor status through the SDK logger - available in any state
@@ -540,6 +643,92 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::hal::tests::MockSpi;
+    use core::convert::Infallible;
+    use core::future::Future;
+    use core::task::{Context, Poll, Waker};
+
+    struct MockPin;
+
+    impl embedded_hal::digital::ErrorType for MockPin {
+        type Error = Infallible;
+    }
+
+    impl OutputPin for MockPin {
+        fn set_low(&mut self) -> Result<(), Infallible> {
+            Ok(())
+        }
+
+        fn set_high(&mut self) -> Result<(), Infallible> {
+            Ok(())
+        }
+    }
+
+    impl Wait for MockPin {
+        async fn wait_for_high(&mut self) -> Result<(), Infallible> {
+            Ok(())
+        }
+
+        async fn wait_for_low(&mut self) -> Result<(), Infallible> {
+            Ok(())
+        }
+
+        async fn wait_for_rising_edge(&mut self) -> Result<(), Infallible> {
+            Ok(())
+        }
+
+        async fn wait_for_falling_edge(&mut self) -> Result<(), Infallible> {
+            Ok(())
+        }
+
+        async fn wait_for_any_edge(&mut self) -> Result<(), Infallible> {
+            Ok(())
+        }
+    }
+
+    struct NoDelay;
+
+    impl DelayNs for NoDelay {
+        async fn delay_ns(&mut self, _ns: u32) {}
+    }
+
+    /// Runs a future whose awaits all complete immediately.
+    fn block_on<F: Future>(future: F) -> F::Output {
+        let mut future = core::pin::pin!(future);
+        let mut context = Context::from_waker(Waker::noop());
+        loop {
+            if let Poll::Ready(output) = future.as_mut().poll(&mut context) {
+                return output;
+            }
+        }
+    }
+
+    #[test]
+    fn failed_creation_returns_the_resources_and_frees_the_sensor() {
+        let spi: &'static mut MockSpi =
+            alloc::boxed::Box::leak(alloc::boxed::Box::new(MockSpi { fail: false }));
+        let spi_addr = spi as *const MockSpi;
+        let error = block_on(Radar::<MockSpi, MockPin, MockPin, NoDelay>::new(
+            2001, spi, MockPin, MockPin, NoDelay,
+        ))
+        .err()
+        .unwrap();
+        // The stub library cannot create a configuration
+        assert_eq!(error.error, SensorError::InitFailed);
+        assert_eq!(error.spi as *const MockSpi, spi_addr);
+        // The sensor id is free again: a retry fails the same way, not as unavailable
+        let retry = block_on(Radar::<MockSpi, MockPin, MockPin, NoDelay>::new(
+            2001,
+            error.spi,
+            error.interrupt,
+            error.enable_pin,
+            error.delay,
+        ))
+        .err()
+        .unwrap();
+        assert_eq!(retry.error, SensorError::InitFailed);
+        assert_eq!(SensorError::from(retry), SensorError::InitFailed);
+    }
 
     #[test]
     fn radar_buffer_is_aligned_for_the_sdk() {

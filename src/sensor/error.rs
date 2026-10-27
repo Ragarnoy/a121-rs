@@ -20,6 +20,9 @@ pub enum SensorError {
     EnablePinFailed,
     /// An SPI transfer to the sensor failed during the SDK call
     SpiTransferFailed,
+    /// The sensor id is already in use, or [`MAX_SENSORS`](crate::radar::MAX_SENSORS) sensors are
+    /// in use
+    SensorUnavailable,
 }
 
 impl core::error::Error for SensorError {}
@@ -43,6 +46,7 @@ impl core::fmt::Display for SensorError {
             Self::InitFailed => write!(f, "initialization failed"),
             Self::EnablePinFailed => write!(f, "failed to set the sensor enable pin"),
             Self::SpiTransferFailed => write!(f, "SPI transfer failed"),
+            Self::SensorUnavailable => write!(f, "sensor id in use, or too many sensors"),
         }
     }
 }

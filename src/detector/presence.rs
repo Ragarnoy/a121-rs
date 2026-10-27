@@ -12,6 +12,7 @@ use a121_sys::*;
 use core::ffi::c_void;
 use core::ptr::NonNull;
 use embedded_hal::digital::OutputPin;
+use embedded_hal::spi::SpiDevice;
 use embedded_hal_async::delay::DelayNs;
 use embedded_hal_async::digital::Wait;
 
@@ -53,26 +54,28 @@ impl Drop for InnerPresenceDetector {
     }
 }
 
-pub struct PresenceDetector<'radar, SINT, ENABLE, DLY>
+pub struct PresenceDetector<'radar, SPI, SINT, ENABLE, DLY>
 where
+    SPI: SpiDevice<u8> + Send + 'static,
     SINT: Wait,
     ENABLE: OutputPin,
     DLY: DelayNs,
 {
-    radar: &'radar mut Radar<SINT, ENABLE, DLY>,
+    radar: &'radar mut Radar<SPI, SINT, ENABLE, DLY>,
     inner: InnerPresenceDetector,
     config: PresenceConfig,
 }
 
-impl<'radar, SINT, ENABLE, DLY> PresenceDetector<'radar, SINT, ENABLE, DLY>
+impl<'radar, SPI, SINT, ENABLE, DLY> PresenceDetector<'radar, SPI, SINT, ENABLE, DLY>
 where
+    SPI: SpiDevice<u8> + Send + 'static,
     SINT: Wait,
     ENABLE: OutputPin,
     DLY: DelayNs,
 {
     /// Creates a new presence detector with default configuration.
     /// Returns an error if the radar is not in Ready state.
-    pub fn new(radar: &'radar mut Radar<SINT, ENABLE, DLY>) -> Result<Self, SensorError> {
+    pub fn new(radar: &'radar mut Radar<SPI, SINT, ENABLE, DLY>) -> Result<Self, SensorError> {
         if radar.state() != RadarState::Ready {
             return Err(SensorError::NotReady);
         }
@@ -88,7 +91,7 @@ where
     /// Creates a new presence detector with the specified configuration.
     /// Returns an error if the radar is not in Ready state.
     pub fn with_config(
-        radar: &'radar mut Radar<SINT, ENABLE, DLY>,
+        radar: &'radar mut Radar<SPI, SINT, ENABLE, DLY>,
         config: PresenceConfig,
     ) -> Result<Self, SensorError> {
         if radar.state() != RadarState::Ready {
@@ -156,7 +159,7 @@ where
         let buffer_size = self.get_buffer_size()?;
         // The sensor is no longer prepared as before, even if this prepare fails
         self.radar.unprepare();
-        let prepared = spi_checked(|| {
+        let prepared = spi_checked(self.radar.id(), || {
             acc_detector_presence_prepare(
                 self.inner.inner_mut(),
                 self.config.inner.as_ptr(),
@@ -259,7 +262,8 @@ where
     /// ```no_run
     /// # use a121_rs::radar::Radar;
     /// # use a121_rs::detector::presence::PresenceDetector;
-    /// # fn example(radar: &mut Radar<impl embedded_hal_async::digital::Wait,
+    /// # fn example(radar: &mut Radar<impl embedded_hal::spi::SpiDevice<u8> + Send,
+    /// #                  impl embedded_hal_async::digital::Wait,
     /// #                             impl embedded_hal::digital::OutputPin,
     /// #                             impl embedded_hal_async::delay::DelayNs>) {
     /// let mut detector = PresenceDetector::new(radar).unwrap();

@@ -25,8 +25,9 @@
 //! communicate with the A121 sensor.
 //! This design allows `a121-rs` to be hardware agnostic, supporting a wide range of embedded platforms
 //! by leveraging the embedded-hal ecosystem.
-//! There is still work to be done to make the HAL more flexible and configurable, but the current
-//! implementation is a good starting point for most use cases.
+//! [`Radar::new`](radar::Radar::new) takes any [`embedded_hal::spi::SpiDevice<u8>`]; up to
+//! [`MAX_SENSORS`](radar::MAX_SENSORS) radars can exist at once, each with its own sensor id and
+//! SPI device.
 //!
 //! # Examples and Use Cases
 //! The library comes with a set of examples, located in the `examples` directory, demonstrating
