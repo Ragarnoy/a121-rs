@@ -13,8 +13,7 @@ version = "0.3.0"
 rust-version = "1.82"
 
 [dependencies]
-# TODO: drop `path` once a121-sys 0.8.0 is published on crates.io
-a121-sys = { version = "0.8.0", path = "../a121-sys" }
+a121-sys = "0.8.0"
 
 defmt = { version = "1.0.1", optional = true }
 
