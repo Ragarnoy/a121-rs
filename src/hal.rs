@@ -146,6 +146,13 @@ impl AccHalImpl {
 
 use alloc::alloc::{alloc, dealloc, Layout};
 
+/// Size and alignment of the header placed in front of each SDK allocation.
+///
+/// The SDK needs memory aligned for any built-in type: 8 bytes on 32-bit Arm, and 16 bytes on
+/// RISC-V and 64-bit targets, where `long double` is 16 bytes.
+const ALLOC_HEADER: usize = if cfg!(target_arch = "arm") { 8 } else { 16 };
+const _: () = assert!(core::mem::size_of::<usize>() <= ALLOC_HEADER);
+
 /// Allocates memory for use by the radar SDK.
 ///
 /// Uses Rust's GlobalAlloc to avoid C malloc symbol conflicts.
@@ -155,10 +162,6 @@ use alloc::alloc::{alloc, dealloc, Layout};
 /// # Safety
 ///
 /// This function is unsafe as it performs raw pointer manipulation.
-/// Size and alignment of the header placed in front of each SDK allocation.
-const ALLOC_HEADER: usize = 8;
-const _: () = assert!(core::mem::size_of::<usize>() <= ALLOC_HEADER);
-
 unsafe extern "C" fn mem_alloc(size: usize) -> *mut c_void {
     if size == 0 {
         return core::ptr::null_mut();
