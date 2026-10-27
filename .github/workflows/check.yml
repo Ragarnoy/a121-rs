@@ -130,9 +130,12 @@ jobs:
         with:
           targets: ${{ matrix.target }}
       - name: Install system build deps
+        timeout-minutes: 10
         run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-arm-none-eabi clang
+          # Skip rebuilding the man page index, which makes installs slow on the runners
+          sudo rm -f /var/lib/man-db/auto-update
+          sudo apt-get -o Acquire::Retries=3 update
+          sudo apt-get -o Acquire::Retries=3 install -y --no-install-recommends gcc-arm-none-eabi libnewlib-arm-none-eabi clang
       - name: cargo check
         run: cargo check --target ${{ matrix.target }} --features stub_library,distance,presence,libm,logger
   msrv:
