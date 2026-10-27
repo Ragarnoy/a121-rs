@@ -21,7 +21,7 @@ impl Display for RssVersion {
 }
 
 impl RssVersion {
-    pub fn new(version: u32) -> Self {
+    fn new(version: u32) -> Self {
         Self { version }
     }
 

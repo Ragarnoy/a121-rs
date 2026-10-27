@@ -53,10 +53,10 @@ where
     DLY: DelayNs,
 {
     /// Reference to the radar system, configured and ready for operation.
-    pub radar: &'radar mut Radar<SINT, ENABLE, DLY>,
+    radar: &'radar mut Radar<SINT, ENABLE, DLY>,
     inner: InnerRadarDistanceDetector,
     /// Configuration for the radar distance detection.
-    pub config: RadarDistanceConfig,
+    config: RadarDistanceConfig,
 }
 
 impl<'radar, SINT, ENABLE, DLY> RadarDistanceDetector<'radar, SINT, ENABLE, DLY>

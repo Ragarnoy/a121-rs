@@ -59,9 +59,9 @@ where
     ENABLE: OutputPin,
     DLY: DelayNs,
 {
-    pub radar: &'radar mut Radar<SINT, ENABLE, DLY>,
+    radar: &'radar mut Radar<SINT, ENABLE, DLY>,
     inner: InnerPresenceDetector,
-    pub config: PresenceConfig,
+    config: PresenceConfig,
 }
 
 impl<'radar, SINT, ENABLE, DLY> PresenceDetector<'radar, SINT, ENABLE, DLY>

@@ -9,6 +9,6 @@ pub enum ConfigError {
     SweepRate,
     /// Error indicating invalid number of subsweeps setting.
     NumSubsweep,
-
+    /// Error indicating that the SDK could not report the configuration buffer size.
     BufferSize,
 }

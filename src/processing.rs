@@ -56,7 +56,7 @@ impl Processing {
     /// # Errors
     ///
     /// Returns [`SensorError::ProcessingFailed`] when the SDK cannot create it.
-    pub fn new(config: &RadarConfig) -> Result<Self, SensorError> {
+    pub(crate) fn new(config: &RadarConfig) -> Result<Self, SensorError> {
         let buffer_size = config
             .config_buffer_size()
             .map_err(|_| SensorError::ProcessingFailed)? as usize;
@@ -89,7 +89,7 @@ impl Processing {
     /// Returns [`SensorError::BufferTooSmall`] when `buffer` is shorter than the configuration's
     /// buffer size, and [`SensorError::BufferMisaligned`] when it is not aligned for any built-in
     /// type.
-    pub fn execute(&mut self, buffer: &mut [u8]) -> Result<ProcessingResult, SensorError> {
+    pub(crate) fn execute(&mut self, buffer: &mut [u8]) -> Result<ProcessingResult, SensorError> {
         use core::mem::MaybeUninit;
 
         check_buffer(buffer, self.buffer_size)?;

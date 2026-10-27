@@ -22,7 +22,7 @@ pub type SignalQuality = f32;
 /// Configuration for the radar presence detection.
 pub struct PresenceConfig {
     /// Non-null pointer to the inner presence detector configuration.
-    pub inner: NonNull<acc_detector_presence_config>,
+    pub(super) inner: NonNull<acc_detector_presence_config>,
 }
 
 impl Drop for PresenceConfig {

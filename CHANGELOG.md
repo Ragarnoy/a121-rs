@@ -57,6 +57,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   half-hibernated. `Radar::reset_sensor` recovers it.
 - The xe125 example links newlib's `sinf`, `cosf` and `tanf` instead of the compiler_builtins ones,
   which saves about 10 KB of flash, and logs at `info` level by default.
+- **Breaking:** narrowed the public API to what users of the crate need. These are no longer public:
+  the `hal` module (`AccHalImpl`, `RadarSpi`, `RefRadarSpi`; `Radar::new` sets up the HAL), the
+  `libm` module (its `extern "C"` math functions are still linked), `RadarConfig::ptr`,
+  `CalibrationResult::new` (use `Default`), `CalibrationInfo::mut_ptr`, `Processing::new` and `execute` (use `Radar::process`),
+  `ProcessingMetaData::new` and `mut_ptr`, `RssVersion::new`, `MemoryRequirements::new`,
+  `DistanceResult::new`, `PresenceResult::new` (use `Default`), `PresenceConfig::inner`, and the
+  `radar` and `config` fields of `RadarDistanceDetector` and `PresenceDetector`. Removed the unused
+  `ProcessingMetaData::ptr` and `PresenceMetadata::new`.
 
 ### Added
 - `logger` feature: log SDK messages through a Rust variadic function (defmt) instead of the C logging
@@ -72,6 +80,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `SensorError::SpiTransferFailed`: an SPI transfer failed during the SDK call. The SDK's transfer
   callback cannot return an error, so the failure is recorded and checked after each SDK call that
   talks to the sensor, which then fails even if the SDK reported success.
+- `config::Hwaas` and `config::ConfigError` are re-exported. They appear in public `RadarConfig`
+  signatures but were not nameable before.
 - `SensorError::BufferMisaligned`, `SensorError::EnablePinFailed` and
   `ProcessDataError::BufferMisaligned`.
 

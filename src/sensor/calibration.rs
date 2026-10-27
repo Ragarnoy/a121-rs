@@ -15,7 +15,7 @@ impl CalibrationInfo {
     /// Returns a mutable pointer to the inner `acc_cal_info_t` struct.
     /// # Safety
     /// This function is unsafe because it returns a raw pointer.
-    pub unsafe fn mut_ptr(&mut self) -> *mut acc_cal_info_t {
+    pub(crate) unsafe fn mut_ptr(&mut self) -> *mut acc_cal_info_t {
         &mut self.inner
     }
 }
@@ -33,10 +33,12 @@ impl defmt::Format for CalibrationResult {
 }
 
 impl CalibrationResult {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self::default()
     }
 
+    /// Returns a pointer to the inner `acc_cal_result_t` struct, for SDK calls the wrapper does not
+    /// cover, together with [`Radar::inner_sensor`](crate::radar::Radar::inner_sensor).
     pub fn ptr(&self) -> *const acc_cal_result_t {
         &self.inner
     }

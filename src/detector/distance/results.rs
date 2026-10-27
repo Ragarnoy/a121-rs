@@ -30,7 +30,7 @@ pub struct DistanceResult<'a> {
 
 impl<'a> DistanceResult<'a> {
     /// Creates a new instance of `DistanceResult`.
-    pub fn new(config: &'a RadarConfig) -> Self {
+    pub(crate) fn new(config: &'a RadarConfig) -> Self {
         Self {
             radar_config: config,
             distances: [Distance::default();

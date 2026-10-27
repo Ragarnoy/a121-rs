@@ -6,8 +6,6 @@ use a121_sys::{
 };
 
 use crate::config::profile::RadarProfile;
-use crate::config::RadarConfig;
-use crate::processing::metadata::ProcessingMetaData;
 use crate::processing::ProcessingResult;
 
 /// Represents the results from a presence detection operation.
@@ -37,7 +35,7 @@ pub struct PresenceResult<'buf> {
 
 impl<'buf> PresenceResult<'buf> {
     /// Creates a new empty PresenceResult
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             presence_detected: false,
             intra_presence_score: 0.0,
@@ -134,23 +132,6 @@ impl PresenceMetadata {
 
     pub(super) fn mut_ptr(&mut self) -> *mut acc_detector_presence_metadata_t {
         &mut self.inner
-    }
-}
-
-impl PresenceMetadata {
-    /// Create a new PresenceMetadata with proper radar config and processing metadata
-    pub fn new(radar_config: &RadarConfig, processing_metadata: &mut ProcessingMetaData) -> Self {
-        Self {
-            inner: acc_detector_presence_metadata_t {
-                start_m: 0.0,
-                end_m: 6.0,
-                step_length_m: 0.0,
-                num_points: 0,
-                profile: acc_config_profile_t_ACC_CONFIG_PROFILE_5,
-                sensor_config: radar_config.ptr(),
-                processing_metadata: unsafe { processing_metadata.mut_ptr() },
-            },
-        }
     }
 }
 

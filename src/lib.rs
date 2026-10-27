@@ -20,8 +20,9 @@
 //! enhancement.
 //!
 //! # Hardware Abstraction Layer (HAL)
-//! `a121-rs` employs an embedded-hal compatible layer, found in the [`hal`](hal/index.html) module,
-//! to abstract over the specific hardware interfaces used to communicate with the A121 sensor.
+//! `a121-rs` employs an embedded-hal compatible layer, set up internally by
+//! [`Radar::new`](radar::Radar::new), to abstract over the specific hardware interfaces used to
+//! communicate with the A121 sensor.
 //! This design allows `a121-rs` to be hardware agnostic, supporting a wide range of embedded platforms
 //! by leveraging the embedded-hal ecosystem.
 //! There is still work to be done to make the HAL more flexible and configurable, but the current
@@ -46,10 +47,10 @@ pub mod config;
 /// Detector modules for the radar sensor
 pub mod detector;
 /// Hardware Abstraction Layer equivalent to the C API
-pub mod hal;
+mod hal;
 #[cfg(feature = "libm")]
 /// Math functions definitions from the libm crate
-pub mod libm;
+mod libm;
 /// Memory calculation utilities for pre-allocating buffers
 pub mod memory;
 /// Number definitions for the radar sensor
