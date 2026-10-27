@@ -52,7 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Subsweep::set_prf` passed the frequency in Hz to the SDK instead of the PRF enum value.
 - Undefined behaviour in the SPI transfer callback when the SPI device returns an error.
 - `mem_alloc` returned pointers aligned to only 4 bytes on 32-bit targets. The SDK requires alignment
-  for any built-in type.
+  for any built-in type: 8 bytes on Arm, 16 bytes on RISC-V.
 - `RadarConfig::set_sweep_mode(SweepMode::Continuous { .. })` always failed because continuous mode
   was enabled before the sweep rate and frame rate were set.
 - The compile-time check that `SCRATCH_SIZE >= 2560` in `Radar` was never evaluated.
