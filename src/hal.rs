@@ -44,8 +44,9 @@ struct Slot {
     failed: bool,
 }
 
-// SAFETY: `spi` comes from a `&'static mut` to a `Send` device (see `register_spi`), and is only
-// dereferenced by the transfer callback during an SDK call on its sensor.
+// SAFETY: `spi` is only dereferenced by the transfer callback during an SDK call on its sensor.
+// That call needs the sensor's radar, which is neither `Send` nor `Sync`, so it runs on the
+// thread that created the radar and registered the device.
 unsafe impl Send for Slot {}
 
 /// The sensors in use, keyed by sensor id.
@@ -91,10 +92,12 @@ impl<const N: usize> SlotTable<N> {
     }
 
     fn release(&mut self, sensor_id: u32) {
-        for slot in &mut self.slots {
-            if slot.is_some_and(|slot| slot.sensor_id == sensor_id) {
-                *slot = None;
-            }
+        if let Some(slot) = self
+            .slots
+            .iter_mut()
+            .find(|slot| slot.is_some_and(|slot| slot.sensor_id == sensor_id))
+        {
+            *slot = None;
         }
     }
 
@@ -135,13 +138,13 @@ impl Drop for SpiRegistration {
 /// # Safety
 ///
 /// `spi` must come from a `&'static mut SPI`, and nothing else may access the device until the
-/// guard is dropped.
+/// guard is dropped. The guard must be owned by a radar, which is neither `Send` nor `Sync`.
 pub(crate) unsafe fn register_spi<SPI>(
     sensor_id: u32,
     spi: NonNull<SPI>,
 ) -> Result<SpiRegistration, SensorError>
 where
-    SPI: SpiDevice<u8> + Send + 'static,
+    SPI: SpiDevice<u8> + 'static,
 {
     SLOTS.lock(|slots| {
         slots
@@ -172,7 +175,9 @@ extern "C" fn transfer8_function(
     buffer: *mut u8,
     buffer_length: usize,
 ) {
-    let buffer = unsafe { core::slice::from_raw_parts_mut(buffer, buffer_length) };
+    if buffer_length == 0 {
+        return;
+    }
     let Some((spi, transfer)) = SLOTS.lock(|slots| slots.borrow_mut().device(sensor_id)) else {
         #[cfg(feature = "defmt")]
         defmt::error!(
@@ -181,9 +186,15 @@ extern "C" fn transfer8_function(
         );
         return;
     };
+    if buffer.is_null() {
+        SLOTS.lock(|slots| slots.borrow_mut().record_failure(sensor_id));
+        return;
+    }
+    // SAFETY: the SDK passes a buffer of `buffer_length` bytes
+    let buffer = unsafe { core::slice::from_raw_parts_mut(buffer, buffer_length) };
     // The transfer runs outside the critical section, so interrupts stay enabled. Only an SDK
     // call on this sensor transfers on its device, and that call holds the sensor's radar, which
-    // is not `Sync`; the slot is released only when the radar is dropped.
+    // is neither `Send` nor `Sync`; the slot is released only when the radar is dropped.
     if !unsafe { transfer(spi, buffer) } {
         SLOTS.lock(|slots| slots.borrow_mut().record_failure(sensor_id));
     }
@@ -230,17 +241,19 @@ static HAL_REGISTERED: Mutex<CriticalSectionRawMutex, Cell<bool>> = Mutex::new(C
 ///
 /// Returns [`SensorError::InitFailed`] when the SDK rejects the HAL; the next call tries again.
 pub(crate) fn ensure_registered() -> Result<(), SensorError> {
-    if HAL_REGISTERED.lock(Cell::get) {
-        return Ok(());
-    }
-    #[cfg(feature = "defmt")]
-    defmt::trace!("Registering HAL");
-    if unsafe { acc_rss_hal_register(&HAL) } {
-        HAL_REGISTERED.lock(|registered| registered.set(true));
+    // Registration only stores the HAL, so it runs inside the critical section, which makes
+    // checking and registering atomic
+    HAL_REGISTERED.lock(|registered| {
+        if !registered.get() {
+            #[cfg(feature = "defmt")]
+            defmt::trace!("Registering HAL");
+            if !unsafe { acc_rss_hal_register(&HAL) } {
+                return Err(SensorError::InitFailed);
+            }
+            registered.set(true);
+        }
         Ok(())
-    } else {
-        Err(SensorError::InitFailed)
-    }
+    })
 }
 
 use alloc::alloc::{alloc, dealloc, Layout};
@@ -463,12 +476,18 @@ pub(crate) mod tests {
         assert!(table.take_failure(3));
     }
 
-    // The tests below use the static table, with sensor ids no other test uses. Tests run in
-    // parallel, so all tests together may hold at most MAX_SENSORS slots at once: 1001, 1002,
-    // 1003 here and 2001 in radar.rs use all 4.
+    extern crate std;
+
+    /// Serializes the tests that use the static slot table, which only has room for
+    /// MAX_SENSORS sensors.
+    pub(crate) fn lock_static_slots() -> std::sync::MutexGuard<'static, ()> {
+        static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
 
     #[test]
     fn transfers_reach_the_sensors_device() {
+        let _lock = lock_static_slots();
         let registration = unsafe { register_spi(1001, leak_spi(false)) }.unwrap();
         let mut buffer = [0x0f, 0xf0];
         let result = spi_checked(1001, || {
@@ -487,10 +506,20 @@ pub(crate) mod tests {
 
     #[test]
     fn spi_failures_are_reported_for_their_sensor_only() {
+        let _lock = lock_static_slots();
         let _failing = unsafe { register_spi(1002, leak_spi(true)) }.unwrap();
         let _working = unsafe { register_spi(1003, leak_spi(false)) }.unwrap();
         let mut buffer = [0u8; 4];
         let mut transfer = |sensor_id| transfer8_function(sensor_id, buffer.as_mut_ptr(), 4);
+        // An empty transfer does nothing, and a missing buffer fails
+        assert_eq!(
+            spi_checked(1003, || transfer8_function(1003, core::ptr::null_mut(), 0)),
+            Ok(())
+        );
+        assert_eq!(
+            spi_checked(1003, || transfer8_function(1003, core::ptr::null_mut(), 4)),
+            Err(SensorError::SpiTransferFailed)
+        );
         assert_eq!(
             spi_checked(1002, || transfer(1002)),
             Err(SensorError::SpiTransferFailed)

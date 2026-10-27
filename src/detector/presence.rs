@@ -56,7 +56,7 @@ impl Drop for InnerPresenceDetector {
 
 pub struct PresenceDetector<'radar, SPI, SINT, ENABLE, DLY>
 where
-    SPI: SpiDevice<u8> + Send + 'static,
+    SPI: SpiDevice<u8> + 'static,
     SINT: Wait,
     ENABLE: OutputPin,
     DLY: DelayNs,
@@ -68,7 +68,7 @@ where
 
 impl<'radar, SPI, SINT, ENABLE, DLY> PresenceDetector<'radar, SPI, SINT, ENABLE, DLY>
 where
-    SPI: SpiDevice<u8> + Send + 'static,
+    SPI: SpiDevice<u8> + 'static,
     SINT: Wait,
     ENABLE: OutputPin,
     DLY: DelayNs,
@@ -262,7 +262,7 @@ where
     /// ```no_run
     /// # use a121_rs::radar::Radar;
     /// # use a121_rs::detector::presence::PresenceDetector;
-    /// # fn example(radar: &mut Radar<impl embedded_hal::spi::SpiDevice<u8> + Send,
+    /// # fn example(radar: &mut Radar<impl embedded_hal::spi::SpiDevice<u8>,
     /// #                  impl embedded_hal_async::digital::Wait,
     /// #                             impl embedded_hal::digital::OutputPin,
     /// #                             impl embedded_hal_async::delay::DelayNs>) {

@@ -8,6 +8,7 @@ use embedded_hal_async::digital::Wait;
 
 use alloc::vec;
 use alloc::vec::Vec;
+use core::marker::PhantomData;
 use core::ops::{Deref, DerefMut};
 use core::ptr::NonNull;
 
@@ -163,12 +164,11 @@ enum Prepared {
 /// ```
 pub struct Radar<SPI, SINT, ENABLE, DLY, const SCRATCH_SIZE: usize = DEFAULT_SCRATCH_BUFFER_SIZE>
 where
-    SPI: SpiDevice<u8> + Send + 'static,
+    SPI: SpiDevice<u8> + 'static,
     SINT: Wait,
     ENABLE: OutputPin,
     DLY: DelayNs,
 {
-    id: u32,
     pub(crate) config: RadarConfig,
     sensor: Sensor<ENABLE, DLY>,
     pub(crate) interrupt: SINT,
@@ -181,6 +181,9 @@ where
     registration: SpiRegistration,
     /// The SPI device, used through the HAL until [`Radar::free`] hands it back.
     spi: NonNull<SPI>,
+    /// Keeps the radar neither `Send` nor `Sync`: the HAL transfers on the SPI device outside a
+    /// critical section, which is only sound while the device is used from a single thread.
+    _single_thread: PhantomData<*mut ()>,
 }
 
 /// A failed [`Radar::new`], with the resources it was given, so it can be retried.
@@ -226,7 +229,7 @@ impl<SPI, SINT, ENABLE, DLY> defmt::Format for RadarInitError<SPI, SINT, ENABLE,
 
 impl<SPI, SINT, ENABLE, DLY, const SCRATCH_SIZE: usize> Radar<SPI, SINT, ENABLE, DLY, SCRATCH_SIZE>
 where
-    SPI: SpiDevice<u8> + Send + 'static,
+    SPI: SpiDevice<u8> + 'static,
     SINT: Wait,
     ENABLE: OutputPin,
     DLY: DelayNs,
@@ -241,6 +244,9 @@ where
     /// exist, [`SensorError::EnablePinFailed`], [`SensorError::InitFailed`] if the SDK could not
     /// register the HAL or create the configuration or sensor, or
     /// [`SensorError::SpiTransferFailed`]. `RadarInitError` converts to [`SensorError`] with `?`.
+    ///
+    /// Dropping the future before it completes, for example on a timeout, drops the SPI device
+    /// with it.
     pub async fn new(
         id: u32,
         spi: &'static mut SPI,
@@ -253,7 +259,6 @@ where
         let spi = NonNull::from(spi);
         match Self::create(id, spi, &mut enable_pin, &mut delay).await {
             Ok((registration, config, inner)) => Ok(Radar {
-                id,
                 config,
                 sensor: Sensor::new(inner, enable_pin, delay),
                 interrupt,
@@ -262,6 +267,7 @@ where
                 scratch: RadarBuffer::new(),
                 registration,
                 spi,
+                _single_thread: PhantomData,
             }),
             Err(error) => Err(RadarInitError {
                 error,
@@ -575,7 +581,7 @@ where
 
     /// Get the radar sensor ID
     pub fn id(&self) -> u32 {
-        self.id
+        self.sensor.id()
     }
 
     /// Calibrate the sensor - available in any state
@@ -618,8 +624,9 @@ where
     ///
     /// Returns `false` if an SPI transfer failed while checking.
     pub fn is_connected(&self) -> bool {
-        spi_checked(self.id, || unsafe {
-            acc_sensor_connected(self.id as acc_sensor_id_t)
+        let id = self.id();
+        spi_checked(id, || unsafe {
+            acc_sensor_connected(id as acc_sensor_id_t)
         })
         .unwrap_or(false)
     }
@@ -705,6 +712,7 @@ mod tests {
 
     #[test]
     fn failed_creation_returns_the_resources_and_frees_the_sensor() {
+        let _lock = crate::hal::tests::lock_static_slots();
         let spi: &'static mut MockSpi =
             alloc::boxed::Box::leak(alloc::boxed::Box::new(MockSpi { fail: false }));
         let spi_addr = spi as *const MockSpi;

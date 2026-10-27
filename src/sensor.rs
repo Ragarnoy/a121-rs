@@ -103,6 +103,11 @@ where
         }
     }
 
+    /// The sensor id.
+    pub fn id(&self) -> u32 {
+        self.inner.id
+    }
+
     /// Destroys the sensor and returns its enable pin and delay.
     pub fn into_parts(self) -> (ENABLE, DLY) {
         let Self {

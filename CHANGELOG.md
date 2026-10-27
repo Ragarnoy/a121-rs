@@ -73,8 +73,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `radar` and `config` fields of `RadarDistanceDetector` and `PresenceDetector`. Removed the unused
   `ProcessingMetaData::ptr` and `PresenceMetadata::new`. `PresenceDetector::measure` and `calibrate`
   replace access through the `radar` field, as on `RadarDistanceDetector`.
-- **Breaking:** `Radar::new` accepts any `SpiDevice<u8>`, whatever its error type, so the SPI
-  adapters the examples needed are gone. It returns `RadarInitError` on failure, which holds the
+- **Breaking:** `Radar::new` accepts any `SpiDevice<u8>`, whatever its error type and including
+  `!Send` devices such as `RefCellDevice` on a shared bus, so the SPI adapters the examples needed
+  are gone. It returns `RadarInitError` on failure, which holds the
   `SensorError` and hands back the SPI device and pins so creation can be retried; it converts to
   `SensorError` with `?`.
 - **Breaking:** `Radar`, `RadarDistanceDetector` and `PresenceDetector` take the SPI device type as
