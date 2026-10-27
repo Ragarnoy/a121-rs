@@ -56,7 +56,9 @@ impl RadarIdleState {
 pub enum SweepMode {
     /// Continuous sweep mode with specified constraints.
     Continuous {
-        /// Sweep rate in Hz, must be >= 0
+        /// Sweep rate in Hz, must be > 0. The frame rate is set to unlimited, as continuous
+        /// sweep mode requires. The inter-frame and inter-sweep idle states must also be equal
+        /// (see [`RadarConfig::set_inter_frame_idle_state`]); the SDK defaults differ.
         sweep_rate: f32,
     },
     /// Non-continuous (or discrete) sweep mode with different settings.
@@ -95,11 +97,11 @@ impl RadarConfig {
         #[cfg(feature = "defmt")]
         defmt::trace!("Creating radar configuration");
         let ptr = unsafe { acc_config_create() };
-        let inner = NonNull::new(ptr).ok_or_else(|| {
+        let Some(inner) = NonNull::new(ptr) else {
             #[cfg(feature = "defmt")]
             defmt::error!("Failed to create radar configuration: acc_config_create returned null");
-            SensorError::InitFailed
-        })?;
+            return Err(SensorError::InitFailed);
+        };
         #[cfg(feature = "defmt")]
         defmt::trace!("Radar configuration created successfully");
         Ok(Self {
@@ -126,8 +128,14 @@ impl RadarConfig {
     pub fn set_sweep_mode(&mut self, sweep_mode: SweepMode) -> Result<(), ConfigError> {
         match sweep_mode {
             SweepMode::Continuous { sweep_rate } => {
-                self.set_continuous_sweep_mode(true)?;
+                // Continuous mode requires a sweep rate > 0, an unlimited frame rate and equal
+                // idle states. Check what can fail first so an error leaves the config unchanged.
+                if self.inter_frame_idle_state() != self.inter_sweep_idle_state() {
+                    return Err(ContinuousSweepMode);
+                }
                 self.set_sweep_rate(sweep_rate)?;
+                self.set_frame_rate(FrameRate::Unlimited);
+                self.set_continuous_sweep_mode(true)?;
             }
             SweepMode::Discrete {
                 frame_rate,
@@ -145,7 +153,7 @@ impl RadarConfig {
     ///
     /// # Arguments
     ///
-    /// * `start_point` - The starting point of the sweep in millimeters.
+    /// * `start_point` - The starting point of the sweep in points (one point is approximately 2.5 mm).
     pub fn set_start_point(&mut self, start_point: i32) {
         unsafe { acc_config_start_point_set(self.inner.as_ptr(), start_point) };
     }
@@ -449,7 +457,8 @@ impl RadarConfig {
     ///
     /// # Arguments
     ///
-    /// * `sweep_rate` - Sweep rate in Hz. Must be >= 0, 0 is interpreted as max sweep rate
+    /// * `sweep_rate` - Sweep rate in Hz. Must be > 0. (The SDK interprets 0 as max sweep rate,
+    ///   but continuous sweep mode, the only user of this setter, requires a rate > 0.)
     fn set_sweep_rate(&mut self, sweep_rate: f32) -> Result<(), ConfigError> {
         if sweep_rate.is_zero() || sweep_rate.is_sign_negative() {
             return Err(ConfigError::SweepRate);
@@ -512,5 +521,16 @@ impl RadarConfig {
         } else {
             Err(ConfigError::BufferSize)
         }
+    }
+}
+
+#[cfg(all(test, feature = "stub_library"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn create_failure_is_an_error() {
+        // The stub acc_config_create returns NULL, which must surface as an error
+        assert!(matches!(RadarConfig::new(), Err(SensorError::InitFailed)));
     }
 }

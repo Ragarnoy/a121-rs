@@ -14,6 +14,7 @@ name: example-xe125_nightly-sys_gcc
 env:
   CPATH: "/usr/lib/arm-none-eabi/include"
   ACC_RSS_LIBS: "/home/runner/work/a121-rs/a121-rs/staticlibs"
+  # TODO: bump to a121-v1.13.0 once the 1.13 libs are on the FTP
   RLIB_PATH: "cortex_m4_gcc/a121-v1.5.0/lib"
 jobs:
   nostd:
@@ -29,9 +30,12 @@ jobs:
       - name: Install stable
         uses: dtolnay/rust-toolchain@nightly
       - name: Install system build deps
+        timeout-minutes: 10
         run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-arm-none-eabi clang lftp
+          # Skip rebuilding the man page index, which makes installs slow on the runners
+          sudo rm -f /var/lib/man-db/auto-update
+          sudo apt-get -o Acquire::Retries=3 update
+          sudo apt-get -o Acquire::Retries=3 install -y --no-install-recommends gcc-arm-none-eabi libnewlib-arm-none-eabi clang lftp
       - name: rustup target add ${{ matrix.target }}
         run: rustup target add ${{ matrix.target }}
       - name: cd to examples/xe125-nightly and remove config.toml vars
@@ -50,3 +54,4 @@ jobs:
           lftp -u "$FTP_U","$FTP_P" "$FTP_URI" -e "mirror --use-pget-n=8 -c $RLIB_PATH $ACC_RSS_LIBS; bye"
       - name: cargo check
         run: cargo check --target ${{ matrix.target }}
+        working-directory: examples/xe125-nightly

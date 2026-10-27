@@ -57,7 +57,7 @@ async fn init(_spawner: Spawner) {
 
     let io = IO::new(p.GPIO, p.IO_MUX);
 
-    println!("{}", a121_rs::radar::rss_version());
+    println!("{}", a121_rs::radar::version::rss_version());
 
     let gpio_r_en = io.pins.gpio33.into_push_pull_output();
     let gpio_r_int = io.pins.gpio34.into_pull_down_input();
@@ -83,9 +83,9 @@ async fn init(_spawner: Spawner) {
     let mut calibration = radar.calibrate().await.unwrap();
     radar.prepare_sensor(&mut calibration).unwrap();
     println!("Radar calibrated and prepared.");
-    let mut distance = RadarDistanceDetector::new(&mut radar);
-    let mut buffer = vec![0u8; distance.get_distance_buffer_size()];
-    let mut static_cal_result = vec![0u8; distance.get_static_result_buffer_size()];
+    let mut distance = RadarDistanceDetector::new(&mut radar).unwrap();
+    let mut buffer = vec![0u8; distance.get_distance_buffer_size().unwrap()];
+    let mut static_cal_result = vec![0u8; distance.get_static_result_buffer_size().unwrap()];
     println!("Starting detector calibration...");
     let mut dynamic_cal_result = distance
         .calibrate_detector(&calibration, &mut buffer, &mut static_cal_result)
@@ -117,7 +117,7 @@ async fn init(_spawner: Spawner) {
                 }
                 if res.calibration_needed() {
                     println!("Calibration needed.");
-                    let calibration = distance.calibrate().await.unwrap();
+                    calibration = distance.calibrate().await.unwrap();
                     dynamic_cal_result = distance
                         .update_calibration(&calibration, &mut buffer)
                         .await

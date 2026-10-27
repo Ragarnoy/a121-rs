@@ -24,9 +24,12 @@ _a121-rs_ comes with a host of features designed to make working with the A121 s
 ### Supported Operating Modes
 
 - **Distance Measurement**: Configure the radar for precise distance measurements to objects.
-- **Presence Detection**: Detect the presence of objects or people in a configured detection zone. (Soon)
+- **Presence Detection**: Detect the presence of objects or people in a configured detection zone.
 
 ## Dependencies
+
+_a121-rs_ builds on [a121-sys](https://crates.io/crates/a121-sys) 0.8, which binds Acconeer A121 SDK v1.13.0.
+The static libraries you link against must be from the same SDK version.
 
 The following dependencies are required to use _a121-rs_:
 - Acconeer A121 Static Library (and detector libraries for distance and presence detection if the feature is enabled)
@@ -45,7 +48,7 @@ To include _a121-rs_ in your project, add the following to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-a121-rs = "0.1"
+a121-rs = "0.3"
 ```
 
 The static library expects implementations of math functions like `sqrt` and `sin` to be available.
@@ -58,9 +61,13 @@ See the [documentation](https://docs.rs/a121-rs) for detailed usage instructions
 | feature        | description                                                                                                                  |
 |----------------|------------------------------------------------------------------------------------------------------------------------------|
 | distance       | Enable distance measurement module                                                                                           |
-| presence       | Enable presence detection module (coming soon)                                                                               |
+| presence       | Enable presence detection module                                                                                             |
 | libm           | Use libm crate for floating point operations                                                                                 |
-| nightly-logger | If the C wrapper for logging does not compile with stable rust, enable this feature to use nightly rust with a custom logger |
+| logger         | Log SDK messages through defmt instead of the C logging bridge, avoiding newlib's `vsnprintf`. Needs a defmt global logger (e.g. `defmt-rtt`) in the final binary. For now it logs the raw format string; argument rendering is coming |
+| nightly-logger | Deprecated alias for `logger`                                                                                                |
+| defmt          | Log through defmt and derive `defmt::Format` on public types                                                                 |
+| std            | Enable `std` in a121-sys                                                                                                     |
+| stub_library   | Link against generated stub libraries instead of the Acconeer SDK, for host builds and tests without the real libraries      |
 
 ## Examples
 
@@ -76,6 +83,12 @@ These examples cover basic setups and common use cases to help you get started q
 
 
 ## Development and Contribution
+
+The tests run on the host against the a121-sys stub libraries:
+
+```sh
+cargo test --features stub_library,distance,presence
+```
 
 Contributions to _a121-rs_ are welcome! Whether it's adding new features, fixing bugs, or improving documentation, feel free to open issues and submit pull requests.
 

@@ -70,6 +70,10 @@ pub fn xm125_clock_config() -> embassy_stm32::Config {
 // Note: a121-rs itself uses Rust's GlobalAlloc (above), but the underlying
 // C SDK may still call malloc/free/calloc/realloc in its internal code.
 
+// Header in front of each block storing its size. 8 bytes so the returned pointer stays
+// aligned for any C type (malloc's contract), even though usize is 4 bytes on thumbv7em.
+const MALLOC_HEADER: usize = 8;
+
 #[no_mangle]
 extern "C" fn malloc(size: usize) -> *mut c_void {
     use alloc::alloc::GlobalAlloc;
@@ -79,11 +83,11 @@ extern "C" fn malloc(size: usize) -> *mut c_void {
     }
 
     // Allocate extra space to store the size before the user data
-    let total_size = match size.checked_add(size_of::<usize>()) {
+    let total_size = match size.checked_add(MALLOC_HEADER) {
         Some(v) => v,
         None => return core::ptr::null_mut(),
     };
-    let layout = core::alloc::Layout::from_size_align(total_size, 8)
+    let layout = core::alloc::Layout::from_size_align(total_size, MALLOC_HEADER)
         .unwrap_or_else(|_| core::panic!("Invalid malloc size: {}", size));
 
     unsafe {
@@ -95,8 +99,8 @@ extern "C" fn malloc(size: usize) -> *mut c_void {
         // Store the user-requested size at the beginning
         *(ptr as *mut usize) = size;
 
-        // Return pointer to user data (after the size)
-        (ptr as *mut usize).offset(1) as *mut c_void
+        // Return pointer to user data (after the header)
+        ptr.add(MALLOC_HEADER) as *mut c_void
     }
 }
 
@@ -111,18 +115,18 @@ extern "C" fn free(ptr: *mut c_void) {
     // We need to store the size somehow. A common approach is to store
     // the size just before the allocated block
     unsafe {
-        let size_ptr = (ptr as *mut usize).offset(-1);
-        let size = *size_ptr;
+        let base = (ptr as *mut u8).sub(MALLOC_HEADER);
+        let size = *(base as *mut usize);
 
         // Create the layout that was used for allocation
         let total_size = size
-            .checked_add(size_of::<usize>())
+            .checked_add(MALLOC_HEADER)
             .expect("Size overflow in free()");
-        let layout =
-            core::alloc::Layout::from_size_align(total_size, 8).expect("Invalid layout in free()");
+        let layout = core::alloc::Layout::from_size_align(total_size, MALLOC_HEADER)
+            .expect("Invalid layout in free()");
 
         // Deallocate using talc
-        ALLOCATOR.dealloc(size_ptr as *mut u8, layout);
+        ALLOCATOR.dealloc(base, layout);
     }
 }
 
@@ -162,10 +166,7 @@ extern "C" fn realloc(ptr: *mut c_void, size: usize) -> *mut c_void {
     }
 
     // Get the old size from the stored metadata
-    let old_size = unsafe {
-        let size_ptr = (ptr as *mut usize).offset(-1);
-        *size_ptr
-    };
+    let old_size = unsafe { *((ptr as *mut u8).sub(MALLOC_HEADER) as *mut usize) };
 
     // Allocate new memory
     let new_ptr = malloc(size);

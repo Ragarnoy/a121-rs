@@ -20,7 +20,7 @@ use embassy_stm32::time::Hertz;
 use embassy_time::{Delay, Duration, Timer};
 use embedded_hal_bus::spi::ExclusiveDevice;
 use num::complex::Complex32;
-use radar::rss_version;
+use radar::version::rss_version;
 use talc::{ClaimOnOom, Span, Talc, Talck};
 use {defmt_rtt as _, panic_probe as _};
 
@@ -77,7 +77,9 @@ async fn main(spawner: Spawner) {
 
     info!("RSS Version: {}", rss_version());
 
-    let mut radar = Radar::new(1, spi_mut_ref.get_mut(), interrupt, enable, Delay).await;
+    let mut radar = Radar::new(1, spi_mut_ref.get_mut(), interrupt, enable, Delay)
+        .await
+        .unwrap();
     info!("Radar enabled");
     let mut buffer = [0u8; 2560];
     let mut calibration = loop {
@@ -97,7 +99,7 @@ async fn main(spawner: Spawner) {
     };
     info!("Calibration complete!");
     radar.prepare_sensor(&mut calibration).unwrap();
-    let mut distance = RadarDistanceDetector::new(&mut radar);
+    let mut distance = RadarDistanceDetector::new(&mut radar).unwrap();
     let mut buffer = [0u8; 2560 * 3];
     let mut static_call_result = [0u8; 2560];
     let mut dynamic_call_result = distance
@@ -113,7 +115,7 @@ async fn main(spawner: Spawner) {
             distance
                 .prepare_detector(&calibration, &mut buffer)
                 .unwrap();
-            distance.measure().await.unwrap();
+            distance.measure(&mut buffer).await.unwrap();
 
             if let Ok(res) = distance.process_data(
                 &mut buffer,
@@ -135,7 +137,7 @@ async fn main(spawner: Spawner) {
                 warn!("Failed to process data");
             }
         }
-        let calibration = distance.calibrate().await.unwrap();
+        calibration = distance.calibrate().await.unwrap();
         dynamic_call_result = distance
             .update_calibration(&calibration, &mut buffer)
             .await
@@ -206,8 +208,8 @@ pub extern "C" fn __hardfp_cexpf(f: Complex32) -> Complex32 {
 }
 
 #[no_mangle]
-pub extern "C" fn __hardfp_cabsf(f: f32) -> f32 {
-    libm::fabsf(f)
+pub extern "C" fn __hardfp_cabsf(f: Complex32) -> f32 {
+    libm::hypotf(f.re, f.im)
 }
 
 #[no_mangle]

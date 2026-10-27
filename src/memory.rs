@@ -17,14 +17,14 @@
 //! # Runtime Usage
 //!
 //! ```no_run
+//! use a121_rs::config::RadarConfig;
 //! use a121_rs::memory::DistanceMemoryCalculator;
-//! use a121_rs::detector::distance::config::RadarDistanceConfig;
 //!
-//! let config = RadarDistanceConfig::default();
+//! let config = RadarConfig::new().unwrap();
 //! let calc = DistanceMemoryCalculator::new(&config);
 //!
 //! // Check total memory requirement before allocating
-//! let total_memory = calc.total_memory();
+//! let total_memory = calc.memory_requirements().total;
 //! println!("Distance detector requires {} bytes", total_memory);
 //!
 //! // Allocate buffers with correct sizes

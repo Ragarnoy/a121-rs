@@ -93,8 +93,8 @@ async fn main(_spawner: Spawner) {
     let mut dist_config = RadarDistanceConfig::balanced();
     dist_config.set_interval(0.7..=1.5);
     let mut distance = RadarDistanceDetector::with_config(&mut radar, dist_config).unwrap();
-    let mut buffer = vec![0u8; distance.get_distance_buffer_size()];
-    let mut static_cal_result = vec![0u8; distance.get_static_result_buffer_size()];
+    let mut buffer = vec![0u8; distance.get_distance_buffer_size().unwrap()];
+    let mut static_cal_result = vec![0u8; distance.get_static_result_buffer_size().unwrap()];
     trace!("Calibrating detector...");
     let mut dynamic_cal_result = distance
         .calibrate_detector(&calibration, &mut buffer, &mut static_cal_result)
@@ -126,7 +126,7 @@ async fn main(_spawner: Spawner) {
                 }
                 if res.calibration_needed() {
                     info!("Calibration needed.");
-                    let calibration = distance.calibrate().await.unwrap();
+                    calibration = distance.calibrate().await.unwrap();
                     dynamic_cal_result = distance
                         .update_calibration(&calibration, &mut buffer)
                         .await

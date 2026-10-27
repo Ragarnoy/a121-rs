@@ -1,5 +1,3 @@
-#![cfg_attr(feature = "nightly-logger", feature(c_variadic))]
-
 //! The `a121-rs` library offers Rust bindings for interfacing with the Acconeer A121 radar sensor,
 //! designed for embedded systems. Unlike traditional networking or sensor libraries, `a121-rs` focuses
 //! on providing low-level access to the sensor's capabilities while abstracting the complexities
@@ -11,7 +9,7 @@
 //!
 //! # Sensor Modes and Configuration
 //! The core functionality of `a121-rs` is exposed through its sensor mode configurations, allowing
-//! users to switch between distance measurement and presence detection(_soon_). The configuration API,
+//! users to switch between distance measurement and presence detection. The configuration API,
 //! found in the module [`config`](config/index.html), enables detailed customization of the
 //! radar's parameters, such as sweep frequency, power levels, and processing options.
 //!
@@ -62,3 +60,6 @@ pub mod processing;
 pub mod radar;
 /// Sensor module for the radar sensor
 mod sensor;
+
+pub use sensor::calibration::{CalibrationInfo, CalibrationResult};
+pub use sensor::error::{ProcessDataError, SensorError};

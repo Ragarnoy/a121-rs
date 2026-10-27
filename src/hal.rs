@@ -9,6 +9,14 @@ use embassy_sync::blocking_mutex::Mutex;
 use embedded_hal::spi::{ErrorKind as SpiErrorKind, SpiDevice};
 
 use a121_sys::{acc_hal_a121_t, acc_hal_optimization_t, acc_rss_hal_register, acc_sensor_id_t};
+#[cfg(feature = "defmt")]
+use a121_sys::{
+    acc_log_level_t, acc_log_level_t_ACC_LOG_LEVEL_DEBUG as LOG_DEBUG,
+    acc_log_level_t_ACC_LOG_LEVEL_ERROR as LOG_ERROR,
+    acc_log_level_t_ACC_LOG_LEVEL_INFO as LOG_INFO,
+    acc_log_level_t_ACC_LOG_LEVEL_VERBOSE as LOG_VERBOSE,
+    acc_log_level_t_ACC_LOG_LEVEL_WARNING as LOG_WARNING,
+};
 
 pub type RadarSpi = dyn SpiDevice<u8, Error = SpiErrorKind> + Send;
 pub type RefRadarSpi = &'static mut RadarSpi;
@@ -52,9 +60,9 @@ impl AccHalImpl {
             mem_alloc: Some(mem_alloc),
             mem_free: Some(mem_free),
             transfer: Some(Self::transfer8_function),
-            #[cfg(feature = "nightly-logger")]
+            #[cfg(feature = "logger")]
             log: Some(logger),
-            #[cfg(not(feature = "nightly-logger"))]
+            #[cfg(not(feature = "logger"))]
             log: Some(a121_sys::c_log_stub),
             optimization: acc_hal_optimization_t { transfer16: None },
         };
@@ -101,11 +109,18 @@ impl AccHalImpl {
     ) {
         let tmp_buf = unsafe { core::slice::from_raw_parts_mut(buffer, buffer_length) };
         // Borrow a mutable reference to the SpiBus
-        SPI_INSTANCE.lock(|cell| unsafe {
+        SPI_INSTANCE.lock(|cell| {
             let mut binding = cell.borrow_mut();
-            let spi = binding.as_mut().unwrap_unchecked();
-            // Perform the SPI transfer
-            spi.transfer_in_place(tmp_buf).unwrap_unchecked();
+            let Some(spi) = binding.as_mut() else {
+                #[cfg(feature = "defmt")]
+                defmt::error!("SPI transfer requested before an SPI device was registered");
+                return;
+            };
+            // Perform the SPI transfer. The SDK callback cannot report errors, so log and continue.
+            if let Err(_e) = spi.transfer_in_place(tmp_buf) {
+                #[cfg(feature = "defmt")]
+                defmt::error!("SPI transfer failed: {}", defmt::Debug2Format(&_e));
+            }
         });
     }
 
@@ -131,10 +146,18 @@ impl AccHalImpl {
 
 use alloc::alloc::{alloc, dealloc, Layout};
 
+/// Size and alignment of the header placed in front of each SDK allocation.
+///
+/// The SDK needs memory aligned for any built-in type: 8 bytes on 32-bit Arm, and 16 bytes on
+/// RISC-V and 64-bit targets, where `long double` is 16 bytes.
+const ALLOC_HEADER: usize = if cfg!(target_arch = "arm") { 8 } else { 16 };
+const _: () = assert!(core::mem::size_of::<usize>() <= ALLOC_HEADER);
+
 /// Allocates memory for use by the radar SDK.
 ///
 /// Uses Rust's GlobalAlloc to avoid C malloc symbol conflicts.
-/// The size is stored before the returned pointer for use in deallocation.
+/// The size is stored in an [`ALLOC_HEADER`]-byte header before the returned pointer for use in
+/// deallocation. The header keeps the returned pointer aligned for any built-in type, as the SDK requires.
 ///
 /// # Safety
 ///
@@ -145,12 +168,12 @@ unsafe extern "C" fn mem_alloc(size: usize) -> *mut c_void {
     }
 
     // Allocate extra space to store the size before the user data
-    let total = match size.checked_add(core::mem::size_of::<usize>()) {
+    let total = match size.checked_add(ALLOC_HEADER) {
         Some(t) => t,
         None => return core::ptr::null_mut(),
     };
 
-    let layout = match Layout::from_size_align(total, 8) {
+    let layout = match Layout::from_size_align(total, ALLOC_HEADER) {
         Ok(l) => l,
         Err(_) => return core::ptr::null_mut(),
     };
@@ -164,7 +187,7 @@ unsafe extern "C" fn mem_alloc(size: usize) -> *mut c_void {
     *(ptr as *mut usize) = size;
 
     // Return pointer after the size metadata
-    ptr.add(core::mem::size_of::<usize>()) as *mut c_void
+    ptr.add(ALLOC_HEADER) as *mut c_void
 }
 
 /// Frees memory previously allocated by mem_alloc.
@@ -181,53 +204,72 @@ unsafe extern "C" fn mem_free(ptr: *mut c_void) {
     }
 
     // Retrieve the size stored before the user data
-    let size_ptr = (ptr as *mut usize).sub(1);
-    let size = *size_ptr;
+    let base = (ptr as *mut u8).sub(ALLOC_HEADER);
+    let size = *(base as *mut usize);
 
-    let total = size + core::mem::size_of::<usize>();
-    let layout = Layout::from_size_align_unchecked(total, 8);
+    let total = size + ALLOC_HEADER;
+    let layout = Layout::from_size_align_unchecked(total, ALLOC_HEADER);
 
-    dealloc(size_ptr as *mut u8, layout);
+    dealloc(base, layout);
 }
 
-#[cfg(feature = "nightly-logger")]
-unsafe extern "C" fn logger(
-    level: a121_sys::acc_log_level_t,
-    module: *const c_char,
-    format: *const c_char,
-    mut _va: ...
-) {
-    let module = unsafe { CStr::from_ptr(module) };
-    let format = unsafe { CStr::from_ptr(format) };
-    let message = format.to_str().unwrap_or("");
-
+/// Emits an SDK log message at the matching defmt level.
+///
+/// The SDK levels are ordered by verbosity (DEBUG is the most verbose), so they are mapped by rank
+/// rather than by name: VERBOSE goes to `debug` and DEBUG to `trace`.
+#[cfg(feature = "defmt")]
+fn log_message(level: acc_log_level_t, module: &str, message: &str) {
     match level {
-        0 => defmt::error!("{}: {}", module.to_str().unwrap_or(""), message),
-        1 => defmt::warn!("{}: {}", module.to_str().unwrap_or(""), message),
-        2 => defmt::info!("{}: {}", module.to_str().unwrap_or(""), message),
-        3 => defmt::debug!("{}: {}", module.to_str().unwrap_or(""), message),
-        4 => defmt::trace!("{}: {}", module.to_str().unwrap_or(""), message),
-        _ => defmt::error!("Unknown log level: {}", level),
+        LOG_ERROR => defmt::error!("{=str}: {=str}", module, message),
+        LOG_WARNING => defmt::warn!("{=str}: {=str}", module, message),
+        LOG_INFO => defmt::info!("{=str}: {=str}", module, message),
+        LOG_VERBOSE => defmt::debug!("{=str}: {=str}", module, message),
+        LOG_DEBUG => defmt::trace!("{=str}: {=str}", module, message),
+        _ => defmt::error!(
+            "Unknown log level {}: {=str}: {=str}",
+            level,
+            module,
+            message
+        ),
     }
 }
 
-#[cfg(not(feature = "nightly-logger"))]
-/// This function is called by the C stub to log messages from the SDK.
+/// Converts a C string from the SDK to `&str`, treating NULL and invalid UTF-8 as empty.
+///
+/// # Safety
+///
+/// `ptr` must be NULL or point to a valid NUL-terminated string.
+#[cfg(feature = "defmt")]
+unsafe fn sdk_str<'a>(ptr: *const c_char) -> &'a str {
+    if ptr.is_null() {
+        return "";
+    }
+    unsafe { CStr::from_ptr(ptr) }.to_str().unwrap_or("")
+}
+
+/// SDK log callback used with the `logger` feature, replacing the C logging bridge.
+///
+/// Note: the format arguments are not rendered yet; the raw format string is logged.
+#[cfg(feature = "logger")]
+unsafe extern "C" fn logger(
+    level: acc_log_level_t,
+    module: *const c_char,
+    format: *const c_char,
+    _args: ...
+) {
+    unsafe { log_message(level, sdk_str(module), sdk_str(format)) }
+}
+
+/// This function is called by the C logging bridge in a121-sys with an already formatted message.
+///
+/// It is defined even with the `logger` feature, so the bridge always links.
+///
 /// # Safety
 /// This function is unsafe because it takes a raw pointer.
 #[no_mangle]
 pub unsafe extern "C" fn rust_log(_level: u32, _message: *const c_char) {
     #[cfg(feature = "defmt")]
-    {
-        let c_str = unsafe { CStr::from_ptr(_message) };
-        let str_slice = c_str.to_str().unwrap_or("");
-        match _level {
-            0 => defmt::error!("{}", str_slice),
-            1 => defmt::warn!("{}", str_slice),
-            2 => defmt::info!("{}", str_slice),
-            3 => defmt::debug!("{}", str_slice),
-            4 => defmt::trace!("{}", str_slice),
-            _ => defmt::error!("Unknown log level: {}", _level),
-        }
+    unsafe {
+        log_message(_level, "", sdk_str(_message))
     }
 }

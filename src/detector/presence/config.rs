@@ -75,8 +75,14 @@ impl PresenceConfig {
     }
 
     /// Sets the profile for presence detection.
+    ///
+    /// The SDK only uses the profile when automatic profile selection is disabled,
+    /// so this also disables it.
     pub fn set_profile(&mut self, profile: RadarProfile) {
-        unsafe { acc_detector_presence_config_profile_set(self.inner.as_ptr(), profile as u32) }
+        unsafe {
+            acc_detector_presence_config_auto_profile_set(self.inner.as_ptr(), false);
+            acc_detector_presence_config_profile_set(self.inner.as_ptr(), profile as u32)
+        }
     }
 
     /// Configures frame rate for presence detection.
