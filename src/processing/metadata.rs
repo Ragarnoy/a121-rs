@@ -20,7 +20,7 @@ impl Default for ProcessingMetaData {
 }
 
 impl ProcessingMetaData {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self::default()
     }
 
@@ -30,12 +30,8 @@ impl ProcessingMetaData {
     /// - The caller must ensure the pointer is only used while ProcessingMetaData exists
     /// - The pointer must only be used for passing to Acconeer API functions
     /// - No other references to the data can exist while the pointer is in use
-    pub unsafe fn mut_ptr(&mut self) -> *mut acc_processing_metadata_t {
+    pub(crate) unsafe fn mut_ptr(&mut self) -> *mut acc_processing_metadata_t {
         &mut self.inner
-    }
-
-    pub fn ptr(&self) -> *const acc_processing_metadata_t {
-        &self.inner
     }
 
     pub fn frame_data_length(&self) -> usize {

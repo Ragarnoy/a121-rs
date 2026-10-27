@@ -59,9 +59,9 @@ where
     ENABLE: OutputPin,
     DLY: DelayNs,
 {
-    pub radar: &'radar mut Radar<SINT, ENABLE, DLY>,
+    radar: &'radar mut Radar<SINT, ENABLE, DLY>,
     inner: InnerPresenceDetector,
-    pub config: PresenceConfig,
+    config: PresenceConfig,
 }
 
 impl<'radar, SINT, ENABLE, DLY> PresenceDetector<'radar, SINT, ENABLE, DLY>
@@ -176,6 +176,21 @@ where
         } else {
             Err(SensorError::InitFailed)
         }
+    }
+
+    /// Measures a frame into `data` for [`detect_presence`](Self::detect_presence).
+    ///
+    /// `data` must be the detector's buffer size (see [`get_buffer_size`](Self::get_buffer_size))
+    /// and aligned for any built-in type.
+    pub async fn measure(&mut self, data: &mut [u8]) -> Result<(), SensorError> {
+        self.radar.measure(data).await
+    }
+
+    /// Calibrates the radar sensor.
+    ///
+    /// Calibration power-cycles the sensor, so the detector must be prepared again afterwards.
+    pub async fn calibrate(&mut self) -> Result<CalibrationResult, SensorError> {
+        self.radar.calibrate().await
     }
 
     /// Resets the internal filters of the presence detector.

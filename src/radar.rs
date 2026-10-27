@@ -253,7 +253,9 @@ where
     /// # Errors
     ///
     /// Returns [`SensorError::NotReady`] when the sensor was not prepared with
-    /// [`Radar::prepare_sensor`], and the errors of [`Processing::execute`].
+    /// [`Radar::prepare_sensor`]. Returns [`SensorError::BufferTooSmall`] when `data` is shorter
+    /// than [`Processing::buffer_size`], and [`SensorError::BufferMisaligned`] when it is not
+    /// aligned for any built-in type.
     pub fn process(&mut self, data: &mut [u8]) -> Result<ProcessingResult, SensorError> {
         match &mut self.prepared {
             Prepared::Radar(processing) => processing.execute(data),

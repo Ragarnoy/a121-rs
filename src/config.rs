@@ -5,12 +5,12 @@ use core::ptr::NonNull;
 
 use num::Zero;
 
-use error::ConfigError;
+pub use error::ConfigError;
 use error::ConfigError::ContinuousSweepMode;
 use frame_rate::FrameRate;
 use profile::RadarProfile;
 
-use crate::config::hwaas::Hwaas;
+pub use crate::config::hwaas::Hwaas;
 use crate::config::prf::PulseRepetitionFrequency;
 use crate::config::subsweep::Subsweep;
 use crate::sensor::error::SensorError;
@@ -118,7 +118,7 @@ impl RadarConfig {
     }
 
     /// Returns a pointer to the internal radar configuration structure
-    pub fn ptr(&self) -> *const acc_config_t {
+    pub(crate) fn ptr(&self) -> *const acc_config_t {
         self.inner.as_ptr()
     }
 

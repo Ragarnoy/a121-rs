@@ -413,7 +413,7 @@ pub struct MemoryRequirements {
 
 impl MemoryRequirements {
     /// Creates a new MemoryRequirements instance
-    pub fn new(external_heap: usize, rss_heap: usize) -> Self {
+    fn new(external_heap: usize, rss_heap: usize) -> Self {
         Self {
             external_heap,
             rss_heap,
