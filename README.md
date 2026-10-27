@@ -63,7 +63,7 @@ See the [documentation](https://docs.rs/a121-rs) for detailed usage instructions
 | distance       | Enable distance measurement module                                                                                           |
 | presence       | Enable presence detection module                                                                                             |
 | libm           | Use libm crate for floating point operations                                                                                 |
-| logger         | Log SDK messages through a Rust logger (defmt) instead of the C logging bridge, avoiding newlib's `vsnprintf`                 |
+| logger         | Log SDK messages through defmt instead of the C logging bridge, avoiding newlib's `vsnprintf`. Needs a defmt global logger (e.g. `defmt-rtt`) in the final binary. For now it logs the raw format string; argument rendering is coming |
 | nightly-logger | Deprecated alias for `logger`                                                                                                |
 | defmt          | Log through defmt and derive `defmt::Format` on public types                                                                 |
 | std            | Enable `std` in a121-sys                                                                                                     |

@@ -64,7 +64,7 @@ jobs:
         with:
           reporter: 'github-pr-check'
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          clippy_flags: --all-targets --features stub_library,distance,presence,libm
+          clippy_flags: --all-targets --features stub_library,distance,presence,libm,logger
   doc:
     # run docs generation on nightly rather than stable. This enables features like
     # https://doc.rust-lang.org/beta/unstable-book/language-features/doc-cfg.html which allows an
@@ -134,7 +134,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y gcc-arm-none-eabi clang
       - name: cargo check
-        run: cargo check --target ${{ matrix.target }} --features stub_library,distance,presence,libm,defmt
+        run: cargo check --target ${{ matrix.target }} --features stub_library,distance,presence,libm,logger
   msrv:
     # check that we can build using the minimal rust version that is specified by this crate
     runs-on: ubuntu-latest

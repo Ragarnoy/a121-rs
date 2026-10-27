@@ -9,6 +9,14 @@ use embassy_sync::blocking_mutex::Mutex;
 use embedded_hal::spi::{ErrorKind as SpiErrorKind, SpiDevice};
 
 use a121_sys::{acc_hal_a121_t, acc_hal_optimization_t, acc_rss_hal_register, acc_sensor_id_t};
+#[cfg(feature = "defmt")]
+use a121_sys::{
+    acc_log_level_t, acc_log_level_t_ACC_LOG_LEVEL_DEBUG as LOG_DEBUG,
+    acc_log_level_t_ACC_LOG_LEVEL_ERROR as LOG_ERROR,
+    acc_log_level_t_ACC_LOG_LEVEL_INFO as LOG_INFO,
+    acc_log_level_t_ACC_LOG_LEVEL_VERBOSE as LOG_VERBOSE,
+    acc_log_level_t_ACC_LOG_LEVEL_WARNING as LOG_WARNING,
+};
 
 pub type RadarSpi = dyn SpiDevice<u8, Error = SpiErrorKind> + Send;
 pub type RefRadarSpi = &'static mut RadarSpi;
@@ -202,44 +210,63 @@ unsafe extern "C" fn mem_free(ptr: *mut c_void) {
     dealloc(base, layout);
 }
 
-#[cfg(feature = "logger")]
-unsafe extern "C" fn logger(
-    level: a121_sys::acc_log_level_t,
-    module: *const c_char,
-    format: *const c_char,
-    mut _va: ...
-) {
-    let module = unsafe { CStr::from_ptr(module) };
-    let format = unsafe { CStr::from_ptr(format) };
-    let message = format.to_str().unwrap_or("");
-
+/// Emits an SDK log message at the matching defmt level.
+///
+/// The SDK levels are ordered by verbosity (DEBUG is the most verbose), so they are mapped by rank
+/// rather than by name: VERBOSE goes to `debug` and DEBUG to `trace`.
+#[cfg(feature = "defmt")]
+fn log_message(level: acc_log_level_t, module: &str, message: &str) {
     match level {
-        0 => defmt::error!("{}: {}", module.to_str().unwrap_or(""), message),
-        1 => defmt::warn!("{}: {}", module.to_str().unwrap_or(""), message),
-        2 => defmt::info!("{}: {}", module.to_str().unwrap_or(""), message),
-        3 => defmt::debug!("{}: {}", module.to_str().unwrap_or(""), message),
-        4 => defmt::trace!("{}: {}", module.to_str().unwrap_or(""), message),
-        _ => defmt::error!("Unknown log level: {}", level),
+        LOG_ERROR => defmt::error!("{=str}: {=str}", module, message),
+        LOG_WARNING => defmt::warn!("{=str}: {=str}", module, message),
+        LOG_INFO => defmt::info!("{=str}: {=str}", module, message),
+        LOG_VERBOSE => defmt::debug!("{=str}: {=str}", module, message),
+        LOG_DEBUG => defmt::trace!("{=str}: {=str}", module, message),
+        _ => defmt::error!(
+            "Unknown log level {}: {=str}: {=str}",
+            level,
+            module,
+            message
+        ),
     }
 }
 
-#[cfg(not(feature = "logger"))]
-/// This function is called by the C stub to log messages from the SDK.
+/// Converts a C string from the SDK to `&str`, treating NULL and invalid UTF-8 as empty.
+///
+/// # Safety
+///
+/// `ptr` must be NULL or point to a valid NUL-terminated string.
+#[cfg(feature = "defmt")]
+unsafe fn sdk_str<'a>(ptr: *const c_char) -> &'a str {
+    if ptr.is_null() {
+        return "";
+    }
+    unsafe { CStr::from_ptr(ptr) }.to_str().unwrap_or("")
+}
+
+/// SDK log callback used with the `logger` feature, replacing the C logging bridge.
+///
+/// Note: the format arguments are not rendered yet; the raw format string is logged.
+#[cfg(feature = "logger")]
+unsafe extern "C" fn logger(
+    level: acc_log_level_t,
+    module: *const c_char,
+    format: *const c_char,
+    _args: ...
+) {
+    unsafe { log_message(level, sdk_str(module), sdk_str(format)) }
+}
+
+/// This function is called by the C logging bridge in a121-sys with an already formatted message.
+///
+/// It is defined even with the `logger` feature, so the bridge always links.
+///
 /// # Safety
 /// This function is unsafe because it takes a raw pointer.
 #[no_mangle]
 pub unsafe extern "C" fn rust_log(_level: u32, _message: *const c_char) {
     #[cfg(feature = "defmt")]
-    {
-        let c_str = unsafe { CStr::from_ptr(_message) };
-        let str_slice = c_str.to_str().unwrap_or("");
-        match _level {
-            0 => defmt::error!("{}", str_slice),
-            1 => defmt::warn!("{}", str_slice),
-            2 => defmt::info!("{}", str_slice),
-            3 => defmt::debug!("{}", str_slice),
-            4 => defmt::trace!("{}", str_slice),
-            _ => defmt::error!("Unknown log level: {}", _level),
-        }
+    unsafe {
+        log_message(_level, "", sdk_str(_message))
     }
 }

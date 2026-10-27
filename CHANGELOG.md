@@ -35,7 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - `logger` feature: log SDK messages through a Rust variadic function (defmt) instead of the C logging
-  bridge, on stable Rust.
+  bridge, on stable Rust. The format arguments are not rendered yet.
 - `stub_library` feature, which forwards to `a121-sys/stub_library` so the crate can be built and
   tested on the host without the Acconeer libraries.
 - `SensorError`, `ProcessDataError`, `CalibrationResult` and `CalibrationInfo` are re-exported from the
