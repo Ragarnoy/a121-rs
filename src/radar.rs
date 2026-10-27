@@ -345,12 +345,21 @@ where
     ///
     /// If disabling fails, the sensor is hibernating but still powered; the radar is in the
     /// hibernating state either way, and [`Radar::hibernate_off`] wakes it.
+    ///
+    /// If an SPI transfer fails, the sensor may or may not be hibernating. The radar leaves the
+    /// ready state so it cannot measure; [`Radar::reset_sensor`] recovers it.
     pub async fn hibernate_on(&mut self) -> Result<(), SensorError> {
         if self.state != RadarState::Ready {
             return Err(SensorError::NotReady);
         }
 
-        self.sensor.hibernate_on()?;
+        if let Err(e) = self.sensor.hibernate_on() {
+            if e == SensorError::SpiTransferFailed {
+                self.prepared = Prepared::None;
+                self.state = RadarState::Enabled;
+            }
+            return Err(e);
+        }
         self.state = RadarState::Hibernating;
         self.sensor.disable_sensor().await
     }
@@ -403,9 +412,9 @@ where
         spi_checked(|| unsafe { acc_sensor_connected(self.id as acc_sensor_id_t) }).unwrap_or(false)
     }
 
-    /// Check sensor status - available in any state
-    pub fn check_status(&self) {
-        self.sensor.check_status();
+    /// Logs the sensor status through the SDK logger - available in any state
+    pub fn check_status(&self) -> Result<(), SensorError> {
+        self.sensor.check_status()
     }
 
     /// Get raw sensor pointer - available in any state

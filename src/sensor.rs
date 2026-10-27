@@ -213,10 +213,8 @@ where
         }
     }
 
-    pub fn check_status(&self) {
-        unsafe {
-            acc_sensor_status(self.inner.deref());
-        }
+    pub fn check_status(&self) -> Result<(), SensorError> {
+        spi_checked(|| unsafe { acc_sensor_status(self.inner.deref()) })
     }
 
     /// Prepares the sensor for entering hibernation.

@@ -66,7 +66,7 @@ async fn main(_spawner: Spawner) {
     info!("Sensor connectivity verified.");
 
     // Check sensor status for debugging
-    radar.check_status();
+    radar.check_status().unwrap();
 
     // Validate calibration before using it
     let mut calibration = loop {

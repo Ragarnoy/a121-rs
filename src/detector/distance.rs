@@ -545,7 +545,7 @@ where
     }
 
     /// Prints the status of the radar distance detector.
-    pub fn print_status(&mut self) {
+    pub fn print_status(&mut self) -> Result<(), SensorError> {
         self.radar.check_status()
     }
 }
