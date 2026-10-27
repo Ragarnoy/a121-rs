@@ -250,7 +250,8 @@ unsafe fn sdk_str<'a>(ptr: *const c_char) -> &'a str {
 /// SDK log callback used with the `logger` feature, replacing the C logging bridge.
 ///
 /// Renders the format string and its arguments in Rust, so newlib's `vsnprintf` is not needed.
-/// Messages longer than 256 bytes are truncated, as with the C bridge.
+/// Messages longer than 256 bytes are cut and end with `…`. Floats are rendered with 7 significant
+/// digits.
 #[cfg(feature = "logger")]
 unsafe extern "C" fn logger(
     level: acc_log_level_t,

@@ -3,8 +3,12 @@
 //! The SDK passes its log messages as a format string plus C variadic arguments. This module
 //! renders them without newlib's `vsnprintf`. It supports the conversions `d i u o x X c s e E f F
 //! g G p %`, the flags `- + space # 0`, width and precision (including `*`), and the length
-//! modifiers `hh h l ll j z t`. Floats are rendered with integer arithmetic to keep code size down,
-//! so they can differ from C in the last digit; that is fine for log lines.
+//! modifiers `hh h l ll j z t`. Formatting stops at the first unsupported conversion, since its
+//! argument cannot be skipped; the rest of the format string is written as is.
+//!
+//! Floats are converted to `f32`, the only float type the SDK logs, and rendered with at most
+//! [`MAX_SIGNIFICANT`] significant digits; further digits are written as zeros. Doubles outside
+//! the `f32` range print as `inf` or 0.
 
 use core::ffi::{
     c_char, c_double, c_int, c_long, c_longlong, c_uint, c_ulong, c_ulonglong, VaList,
@@ -70,7 +74,7 @@ impl PrintfArgs for VaList<'_> {
 const ELLIPSIS: &str = "…";
 
 /// Fixed-size text buffer. Output that does not fit is cut at a character boundary and marked
-/// with `…`.
+/// with `…`, and every write from then on fails, so formatting stops early.
 pub(crate) struct LineBuf<const N: usize> {
     buf: [u8; N],
     len: usize,
@@ -95,29 +99,44 @@ impl<const N: usize> LineBuf<N> {
 impl<const N: usize> Write for LineBuf<N> {
     fn write_str(&mut self, s: &str) -> fmt::Result {
         if self.truncated {
+            return Err(fmt::Error);
+        }
+        if s.len() <= N - self.len {
+            self.push(s);
             return Ok(());
         }
-        // Keep room for the marker so it can always be appended
-        let capacity = N.saturating_sub(ELLIPSIS.len());
-        let available = capacity.saturating_sub(self.len);
-        if s.len() <= available {
-            self.buf[self.len..self.len + s.len()].copy_from_slice(s.as_bytes());
-            self.len += s.len();
-            return Ok(());
-        }
-        let mut cut = available;
-        while !s.is_char_boundary(cut) {
-            cut -= 1;
-        }
+        // Make room for the marker, dropping already written text if needed
         let marker = if N >= ELLIPSIS.len() { ELLIPSIS } else { "" };
-        for part in [&s[..cut], marker] {
-            self.buf[self.len..self.len + part.len()].copy_from_slice(part.as_bytes());
-            self.len += part.len();
+        let limit = N - marker.len();
+        if self.len > limit {
+            let mut cut = limit;
+            while !self.as_str().is_char_boundary(cut) {
+                cut -= 1;
+            }
+            self.len = cut;
+        } else {
+            let mut cut = limit - self.len;
+            while !s.is_char_boundary(cut) {
+                cut -= 1;
+            }
+            self.push(&s[..cut]);
         }
+        self.push(marker);
         self.truncated = true;
-        Ok(())
+        Err(fmt::Error)
     }
 }
+
+impl<const N: usize> LineBuf<N> {
+    fn push(&mut self, s: &str) {
+        self.buf[self.len..self.len + s.len()].copy_from_slice(s.as_bytes());
+        self.len += s.len();
+    }
+}
+
+/// Largest width or precision honoured; larger ones are clamped. Output is cut at 256 bytes
+/// anyway, and this bounds the padding loops.
+const MAX_FIELD: usize = 1024;
 
 #[derive(Default)]
 struct Spec {
@@ -180,7 +199,7 @@ pub(crate) unsafe fn format(
         if fmt.get(i) == Some(&b'*') {
             let width = unsafe { args.int() };
             spec.left |= width < 0;
-            spec.width = width.unsigned_abs() as usize;
+            spec.width = (width.unsigned_abs() as usize).min(MAX_FIELD);
             i += 1;
         } else {
             spec.width = parse_number(fmt, &mut i);
@@ -190,7 +209,7 @@ pub(crate) unsafe fn format(
             if fmt.get(i) == Some(&b'*') {
                 let precision = unsafe { args.int() };
                 // A negative precision is taken as if it were omitted
-                spec.precision = usize::try_from(precision).ok();
+                spec.precision = usize::try_from(precision).ok().map(|p| p.min(MAX_FIELD));
                 i += 1;
             } else {
                 spec.precision = Some(parse_number(fmt, &mut i));
@@ -227,10 +246,16 @@ pub(crate) unsafe fn format(
                 write_integer(out, &spec, "", prefix, value, base, upper)?;
             }
             b'c' => {
-                // The argument is promoted to int; C prints it as an unsigned char
-                let c = char::from(unsafe { args.int() } as u8);
+                // The argument is promoted to int; C prints it as an unsigned char. A byte that is
+                // not ASCII is not valid UTF-8 on its own, so it is replaced, as in `%s`.
+                let byte = unsafe { args.int() } as u8;
+                let c = if byte.is_ascii() {
+                    char::from(byte)
+                } else {
+                    char::REPLACEMENT_CHARACTER
+                };
                 let mut encoded = [0; 4];
-                write_padded(out, &spec, false, "", "", 0, c.encode_utf8(&mut encoded))?;
+                write_padded(out, &spec, false, "", "", 0, &*c.encode_utf8(&mut encoded))?;
             }
             b's' => {
                 let ptr = unsafe { args.ptr() };
@@ -262,7 +287,11 @@ pub(crate) unsafe fn format(
                 // Consume the pointer but never write through it
                 let _ = unsafe { args.ptr() };
             }
-            _ => write_lossy(out, &fmt[spec_start..i])?,
+            _ => {
+                // The size of its argument is unknown, so later arguments cannot be found
+                write_lossy(out, &fmt[spec_start..])?;
+                break;
+            }
         }
     }
     Ok(())
@@ -276,7 +305,7 @@ fn parse_number(fmt: &[u8], i: &mut usize) -> usize {
             .saturating_add(usize::from(digit - b'0'));
         *i += 1;
     }
-    value
+    value.min(MAX_FIELD)
 }
 
 fn parse_length(fmt: &[u8], i: &mut usize) -> Length {
@@ -349,7 +378,7 @@ fn write_integer(
     out: &mut impl Write,
     spec: &Spec,
     sign: &str,
-    mut prefix: &str,
+    prefix: &str,
     value: u64,
     base: u64,
     upper: bool,
@@ -361,16 +390,15 @@ fn write_integer(
     } else {
         digits(value, base, upper, &mut buf)
     };
-    let mut zeros = spec.precision.unwrap_or(0).saturating_sub(digits.len());
+    let zeros = spec.precision.unwrap_or(0).saturating_sub(digits.len());
     // `#o` guarantees a leading zero
-    if base == 8 && spec.alt && zeros == 0 && !digits.starts_with('0') {
-        prefix = "0";
-    }
+    let prefix = if base == 8 && spec.alt && zeros == 0 && !digits.starts_with('0') {
+        "0"
+    } else {
+        prefix
+    };
     // The 0 flag is ignored when a precision is given
     let zero_pad = spec.zero && spec.precision.is_none();
-    if base == 8 && spec.alt && prefix == "0" {
-        zeros = 0;
-    }
     write_padded(out, spec, zero_pad, sign, prefix, zeros, digits)
 }
 
@@ -403,14 +431,14 @@ fn write_decimal(out: &mut impl Write, value: u64, min_digits: usize) -> fmt::Re
     out.write_str(digits)
 }
 
-// Floats are formatted with integer arithmetic instead of core's float formatting, which would
-// add about 24 KiB to the binary. Results can differ from C in the last digit.
+// Floats are rendered in single precision: the target FPU has no double-precision unit, so f64
+// arithmetic would link software routines, and core's float formatting would add about 24 KiB.
 
-/// Highest float precision supported; larger precisions are clamped.
-const MAX_FLOAT_PRECISION: usize = 16;
+/// Significant digits a float is rendered with; later digits are written as zeros.
+const MAX_SIGNIFICANT: usize = 7;
 
-const POW10: [u64; 20] = {
-    let mut table = [1u64; 20];
+const POW10: [u32; 10] = {
+    let mut table = [1u32; 10];
     let mut i = 1;
     while i < table.len() {
         table[i] = table[i - 1] * 10;
@@ -419,8 +447,220 @@ const POW10: [u64; 20] = {
     table
 };
 
+const POW10_F32: [f32; 39] = {
+    // Computed in f64 at compile time, so each entry is rounded once
+    let mut table = [1.0f32; 39];
+    let mut power = 1.0f64;
+    let mut i = 0;
+    while i < table.len() {
+        table[i] = power as f32;
+        power *= 10.0;
+        i += 1;
+    }
+    table
+};
+
+/// A non-negative number rounded to `count` significant digits, the first of which is at the
+/// decimal position `exp`: `digits * 10^(exp + 1 - count)`.
+#[derive(Clone, Copy)]
+struct Decimal {
+    digits: u32,
+    count: usize,
+    exp: i32,
+}
+
+impl Decimal {
+    const ZERO: Self = Self {
+        digits: 0,
+        count: 1,
+        exp: 0,
+    };
+
+    /// Digit at the decimal position `pos`: 0 for units, -1 for tenths and so on.
+    fn digit(&self, pos: i32) -> char {
+        let index = self.exp - pos;
+        if index < 0 || index >= self.count as i32 {
+            return '0';
+        }
+        let digit = self.digits / POW10[self.count - 1 - index as usize] % 10;
+        char::from(b'0' + digit as u8)
+    }
+
+    /// Position of the last non-zero digit, or 0 if there is none.
+    fn last_nonzero(&self) -> i32 {
+        if self.digits == 0 {
+            return 0;
+        }
+        let mut digits = self.digits;
+        let mut pos = self.exp + 1 - self.count as i32;
+        while digits.is_multiple_of(10) {
+            digits /= 10;
+            pos += 1;
+        }
+        pos
+    }
+}
+
+/// Splits a finite non-negative `value` into a mantissa in `[1, 10)` and a decimal exponent.
+fn normalize(value: f32) -> (f32, i32) {
+    if value == 0.0 {
+        return (0.0, 0);
+    }
+    let (mut value, mut exp) = (value, 0);
+    if value < 1e-30 {
+        // Bring subnormals into the range of the table
+        value *= 1e15;
+        exp = -15;
+    }
+    let mut e = 0;
+    if value >= 1.0 {
+        while e < POW10_F32.len() - 1 && value >= POW10_F32[e + 1] {
+            e += 1;
+        }
+        (value / POW10_F32[e], exp + e as i32)
+    } else {
+        while value * POW10_F32[e] < 1.0 {
+            e += 1;
+        }
+        (value * POW10_F32[e], exp - e as i32)
+    }
+}
+
+/// Rounds a normalized number to `count` significant digits, at most [`MAX_SIGNIFICANT`].
+fn round(mantissa: f32, exp: i32, count: usize) -> Decimal {
+    let count = count.clamp(1, MAX_SIGNIFICANT);
+    if mantissa == 0.0 {
+        return Decimal {
+            count,
+            ..Decimal::ZERO
+        };
+    }
+    // Below 10^7 every integer is exact in an f32
+    let mut digits = (mantissa * POW10_F32[count - 1] + 0.5) as u32;
+    let mut exp = exp;
+    // Rounding can carry into a new digit, as in 9.99 -> 10.0
+    if digits >= POW10[count] {
+        digits /= 10;
+        exp += 1;
+    }
+    Decimal { digits, count, exp }
+}
+
+/// Rounds a normalized number to `precision` decimals.
+fn round_fixed(mantissa: f32, exp: i32, precision: usize) -> Decimal {
+    let count = exp + 1 + precision as i32;
+    if count > 0 {
+        round(mantissa, exp, count as usize)
+    } else if count == 0 && mantissa >= 5.0 {
+        // Only the rounding reaches the last decimal
+        Decimal {
+            digits: 1,
+            count: 1,
+            exp: -(precision as i32),
+        }
+    } else {
+        Decimal::ZERO
+    }
+}
+
+/// Text written after the sign, prefix and leading zeros of a conversion.
+trait Body {
+    /// Length in characters, for padding.
+    fn char_len(&self) -> usize;
+    fn write(&self, out: &mut impl Write) -> fmt::Result;
+}
+
+impl Body for &str {
+    fn char_len(&self) -> usize {
+        self.chars().count()
+    }
+    fn write(&self, out: &mut impl Write) -> fmt::Result {
+        out.write_str(self)
+    }
+}
+
+/// A float in `%f` or `%e` form.
+enum Float {
+    Fixed {
+        decimal: Decimal,
+        precision: usize,
+        point: bool,
+    },
+    Exponent {
+        decimal: Decimal,
+        precision: usize,
+        point: bool,
+        upper: bool,
+    },
+}
+
+impl Body for Float {
+    fn char_len(&self) -> usize {
+        match *self {
+            Float::Fixed {
+                decimal,
+                precision,
+                point,
+            } => decimal.exp.max(0) as usize + 1 + usize::from(point) + precision,
+            Float::Exponent {
+                decimal,
+                precision,
+                point,
+                ..
+            } => {
+                let exp_digits = if decimal.exp.unsigned_abs() >= 100 {
+                    3
+                } else {
+                    2
+                };
+                1 + usize::from(point) + precision + 2 + exp_digits
+            }
+        }
+    }
+
+    fn write(&self, out: &mut impl Write) -> fmt::Result {
+        match *self {
+            Float::Fixed {
+                decimal,
+                precision,
+                point,
+            } => {
+                for pos in (0..=decimal.exp.max(0)).rev() {
+                    out.write_char(decimal.digit(pos))?;
+                }
+                if point {
+                    out.write_char('.')?;
+                }
+                for pos in 1..=precision as i32 {
+                    out.write_char(decimal.digit(-pos))?;
+                }
+                Ok(())
+            }
+            Float::Exponent {
+                decimal,
+                precision,
+                point,
+                upper,
+            } => {
+                out.write_char(decimal.digit(decimal.exp))?;
+                if point {
+                    out.write_char('.')?;
+                }
+                for offset in 1..=precision as i32 {
+                    out.write_char(decimal.digit(decimal.exp - offset))?;
+                }
+                out.write_char(if upper { 'E' } else { 'e' })?;
+                out.write_char(if decimal.exp < 0 { '-' } else { '+' })?;
+                write_decimal(out, u64::from(decimal.exp.unsigned_abs()), 2)
+            }
+        }
+    }
+}
+
 fn write_float(out: &mut impl Write, spec: &Spec, value: f64, conversion: u8) -> fmt::Result {
     let upper = conversion.is_ascii_uppercase();
+    // The SDK logs floats, which C promotes to double for variadic calls
+    let value = value as f32;
     let sign = sign_str(value.is_sign_negative() && !value.is_nan(), spec);
     if !value.is_finite() {
         let text = match (value.is_nan(), upper) {
@@ -432,118 +672,54 @@ fn write_float(out: &mut impl Write, spec: &Spec, value: f64, conversion: u8) ->
         return write_padded(out, spec, false, sign, "", 0, text);
     }
 
-    let precision = spec.precision.unwrap_or(6).min(MAX_FLOAT_PRECISION);
-    let value = value.abs();
-    let mut text = LineBuf::<64>::new();
-    match conversion.to_ascii_lowercase() {
-        b'f' => write_fixed(&mut text, value, precision, spec.alt, upper)?,
-        b'e' => write_exponent(&mut text, value, precision, spec.alt, upper)?,
-        _ => {
-            // %g: the precision is the number of significant digits
-            let significant = precision.max(1);
-            let (_, exponent) = normalize(value, significant - 1);
-            let mut body = LineBuf::<64>::new();
-            if exponent >= -4 && exponent < significant as i32 {
-                let decimals = (significant as i32 - 1 - exponent) as usize;
-                write_fixed(&mut body, value, decimals, spec.alt, upper)?;
-            } else {
-                write_exponent(&mut body, value, significant - 1, spec.alt, upper)?;
-            }
-            let body = body.as_str();
-            if spec.alt {
-                text.write_str(body)?;
-            } else {
-                let split = body.find(['e', 'E']).unwrap_or(body.len());
-                let (mantissa, exponent) = body.split_at(split);
-                text.write_str(trim_zeros(mantissa))?;
-                text.write_str(exponent)?;
-            }
+    let precision = spec.precision.unwrap_or(6);
+    let (mantissa, exp) = normalize(value.abs());
+    let body = match conversion.to_ascii_lowercase() {
+        b'f' => Float::Fixed {
+            decimal: round_fixed(mantissa, exp, precision),
+            precision,
+            point: precision > 0 || spec.alt,
+        },
+        b'e' => Float::Exponent {
+            decimal: round(mantissa, exp, precision + 1),
+            precision,
+            point: precision > 0 || spec.alt,
+            upper,
+        },
+        _ => general(mantissa, exp, precision, spec.alt, upper),
+    };
+    write_padded(out, spec, spec.zero, sign, "", 0, body)
+}
+
+/// `%g`: `precision` significant digits, in `%e` form for small or large exponents and in `%f`
+/// form otherwise. Trailing zeros are removed unless `alt` (`#`) is set.
+fn general(mantissa: f32, exp: i32, precision: usize, alt: bool, upper: bool) -> Float {
+    let significant = precision.max(1);
+    let decimal = round(mantissa, exp, significant);
+    let last = decimal.last_nonzero();
+    let trim = |precision: usize, wanted: i32| {
+        if alt {
+            precision
+        } else {
+            precision.min(wanted.max(0) as usize)
+        }
+    };
+    if decimal.exp < -4 || decimal.exp >= significant as i32 {
+        let precision = trim(significant - 1, decimal.exp - last);
+        Float::Exponent {
+            decimal,
+            precision,
+            point: precision > 0 || alt,
+            upper,
+        }
+    } else {
+        let precision = trim((significant as i32 - 1 - decimal.exp) as usize, -last);
+        Float::Fixed {
+            decimal,
+            precision,
+            point: precision > 0 || alt,
         }
     }
-    write_padded(out, spec, spec.zero, sign, "", 0, text.as_str())
-}
-
-/// Writes a non-negative `value` as `ddd.ddd`, like C's `%f`.
-///
-/// Values too large to scale into a `u64` are written in exponent form instead.
-fn write_fixed(
-    out: &mut impl Write,
-    value: f64,
-    precision: usize,
-    alt: bool,
-    upper: bool,
-) -> fmt::Result {
-    let precision = precision.min(MAX_FLOAT_PRECISION);
-    let scaled = value * POW10[precision] as f64 + 0.5;
-    if scaled >= u64::MAX as f64 {
-        return write_exponent(out, value, precision, alt, upper);
-    }
-    let scaled = scaled as u64;
-    write_decimal(out, scaled / POW10[precision], 1)?;
-    if precision > 0 || alt {
-        out.write_char('.')?;
-    }
-    if precision > 0 {
-        write_decimal(out, scaled % POW10[precision], precision)?;
-    }
-    Ok(())
-}
-
-/// Writes a non-negative `value` as `d.ddde+XX`, like C's `%e`.
-fn write_exponent(
-    out: &mut impl Write,
-    value: f64,
-    precision: usize,
-    alt: bool,
-    upper: bool,
-) -> fmt::Result {
-    let precision = precision.min(MAX_FLOAT_PRECISION);
-    let (digits, exponent) = normalize(value, precision);
-    write_decimal(out, digits / POW10[precision], 1)?;
-    if precision > 0 || alt {
-        out.write_char('.')?;
-    }
-    if precision > 0 {
-        write_decimal(out, digits % POW10[precision], precision)?;
-    }
-    out.write_char(if upper { 'E' } else { 'e' })?;
-    out.write_char(if exponent < 0 { '-' } else { '+' })?;
-    write_decimal(out, u64::from(exponent.unsigned_abs()), 2)
-}
-
-/// Rounds a non-negative `value` to `precision + 1` significant digits.
-///
-/// Returns the digits as an integer and the decimal exponent of the first one, so that
-/// `value ≈ digits * 10^(exponent - precision)`.
-fn normalize(value: f64, precision: usize) -> (u64, i32) {
-    if value == 0.0 {
-        return (0, 0);
-    }
-    let mut mantissa = value;
-    let mut exponent = 0;
-    while mantissa >= 10.0 {
-        mantissa /= 10.0;
-        exponent += 1;
-    }
-    while mantissa < 1.0 {
-        mantissa *= 10.0;
-        exponent -= 1;
-    }
-    let mut digits = (mantissa * POW10[precision] as f64 + 0.5) as u64;
-    // Rounding up can carry into a new digit, as in 9.99 -> 10.0
-    if digits >= POW10[precision + 1] {
-        digits /= 10;
-        exponent += 1;
-    }
-    (digits, exponent)
-}
-
-/// Removes trailing zeros after the decimal point, and the point itself if nothing follows it.
-fn trim_zeros(number: &str) -> &str {
-    if !number.contains('.') {
-        return number;
-    }
-    number.trim_end_matches('0').trim_end_matches('.')
 }
 
 /// Writes `sign`, `prefix`, `zeros` zeros and `body`, padded to the field width.
@@ -554,27 +730,27 @@ fn write_padded(
     sign: &str,
     prefix: &str,
     zeros: usize,
-    body: &str,
+    body: impl Body,
 ) -> fmt::Result {
-    let len = sign.len() + prefix.len() + zeros + body.chars().count();
+    let len = sign.len() + prefix.len() + zeros + body.char_len();
     let padding = spec.width.saturating_sub(len);
     if spec.left {
         out.write_str(sign)?;
         out.write_str(prefix)?;
         write_repeated(out, '0', zeros)?;
-        out.write_str(body)?;
+        body.write(out)?;
         write_repeated(out, ' ', padding)
     } else if zero_pad {
         out.write_str(sign)?;
         out.write_str(prefix)?;
         write_repeated(out, '0', zeros + padding)?;
-        out.write_str(body)
+        body.write(out)
     } else {
         write_repeated(out, ' ', padding)?;
         out.write_str(sign)?;
         out.write_str(prefix)?;
         write_repeated(out, '0', zeros)?;
-        out.write_str(body)
+        body.write(out)
     }
 }
 
@@ -602,15 +778,16 @@ mod tests {
     use core::ffi::CStr;
 
     /// Formats through a real C variadic call, as the SDK does.
-    unsafe extern "C" fn render(out: *mut LineBuf<256>, fmt: *const c_char, mut args: ...) {
+    /// Returns whether formatting succeeded, that is, whether the output was not truncated.
+    unsafe extern "C" fn render(out: *mut LineBuf<256>, fmt: *const c_char, mut args: ...) -> bool {
         let fmt = unsafe { CStr::from_ptr(fmt) }.to_bytes();
-        unsafe { format(fmt, &mut args, &mut *out) }.unwrap();
+        unsafe { format(fmt, &mut args, &mut *out) }.is_ok()
     }
 
     macro_rules! check {
         ($expected:expr, $fmt:literal $(, $arg:expr)* $(,)?) => {{
             let mut out = LineBuf::<256>::new();
-            unsafe { render(&mut out, $fmt.as_ptr() $(, $arg)*) };
+            assert!(unsafe { render(&mut out, $fmt.as_ptr() $(, $arg)*) });
             assert_eq!(out.as_str(), $expected, "format {:?}", $fmt);
         }};
     }
@@ -621,6 +798,36 @@ mod tests {
         check!("100%", c"100%%");
         check!("%q", c"%q");
         check!("end %", c"end %");
+    }
+
+    #[test]
+    fn unsupported_conversion_stops_formatting() {
+        check!(
+            "1 %a %d %s",
+            c"%d %a %d %s",
+            1 as c_int,
+            2.0f64,
+            3 as c_int,
+            4 as c_int
+        );
+        check!("%*q %d", c"%*q %d", 5 as c_int, 6 as c_int);
+    }
+
+    #[test]
+    fn huge_widths_are_clamped() {
+        let check_truncated = |out: &LineBuf<256>| {
+            assert_eq!(out.as_str().len(), 256);
+            assert!(out.as_str().ends_with(ELLIPSIS));
+        };
+        let mut out = LineBuf::<256>::new();
+        assert!(!unsafe { render(&mut out, c"%*d".as_ptr(), c_int::MIN, 1 as c_int) });
+        check_truncated(&out);
+        let mut out = LineBuf::<256>::new();
+        assert!(!unsafe { render(&mut out, c"%4000000000d".as_ptr(), 1 as c_int) });
+        check_truncated(&out);
+        let mut out = LineBuf::<256>::new();
+        assert!(!unsafe { render(&mut out, c"%.*f".as_ptr(), c_int::MAX, 1.0f64) });
+        check_truncated(&out);
     }
 
     #[test]
@@ -641,6 +848,7 @@ mod tests {
         );
         check!("7 17", c"%u %lo", 7 as c_uint, 15 as c_ulong);
         check!("ok", c"%c%c", b'o' as c_int, b'k' as c_int);
+        check!("\u{FFFD}|  a", c"%c|%3c", 0xB0 as c_int, b'a' as c_int);
     }
 
     #[test]
@@ -665,6 +873,13 @@ mod tests {
             8 as c_uint,
             8 as c_uint,
             0 as c_uint,
+        );
+        check!(
+            "0 0 00010",
+            c"%#o %#.0o %#.5o",
+            0 as c_uint,
+            0 as c_uint,
+            8 as c_uint
         );
         check!("|007|  -07|", c"|%.3d|%5.2d|", 7 as c_int, -7 as c_int);
         check!("[]", c"[%.0d]", 0 as c_int);
@@ -732,10 +947,25 @@ mod tests {
             9.9999f64,
             0.05f64
         );
-        check!("1.5e+300 2.5e-300", c"%.1e %.1e", 1.5e300f64, 2.5e-300f64);
-        // Too large to scale for %f: written in exponent form
-        check!("1.000000e+20", c"%f", 1e20f64);
+        check!(
+            "1.5e+38 2.5e-38 1.0e-40",
+            c"%.1e %.1e %.1e",
+            1.5e38f64,
+            2.5e-38f64,
+            1e-40f64
+        );
+        // Outside the f32 range
+        check!("inf 0.0", c"%.0e %.1f", 1e300f64, 1e-300f64);
         check!("-0.000000", c"%f", -0.0f64);
+        check!("0.01 0.00 1", c"%.2f %.2f %.0f", 0.006f64, 0.004f64, 0.6f64);
+    }
+
+    #[test]
+    fn float_digits_beyond_f32_precision_are_zeros() {
+        check!("100000000000000000000.000000", c"%f", 1e20f64);
+        check!("2000.0000000000000000", c"%.16f", 2000.0f64);
+        check!("0.10000000000000000000", c"%.20f", 0.1f64);
+        check!("1.2345670000e+04", c"%.10e", 12345.67f64);
     }
 
     #[test]
@@ -748,18 +978,38 @@ mod tests {
             123_456_789.0f64
         );
         check!("1e-05 1.5 100.000", c"%g %G %#g", 1e-5f64, 1.5f64, 100.0f64);
+        check!(
+            "0 1E+10 0.000123 1.0",
+            c"%g %G %.3g %#.2g",
+            0.0f64,
+            1e10f64,
+            0.000123f64,
+            1.0f64
+        );
+        check!("0.0001234", c"%.16g", 0.0001234f64);
     }
 
     #[test]
     fn line_buffer_truncates_at_char_boundary() {
         let mut buf = LineBuf::<8>::new();
-        buf.write_str("abcdefghij").unwrap();
+        assert!(buf.write_str("abcdefghij").is_err());
         assert_eq!(buf.as_str(), "abcde…");
-        buf.write_str("more").unwrap();
+        assert!(buf.write_str("more").is_err());
         assert_eq!(buf.as_str(), "abcde…");
 
         let mut buf = LineBuf::<8>::new();
-        buf.write_str("abcdé!!!").unwrap();
+        assert!(buf.write_str("abcdé!!!").is_err());
         assert_eq!(buf.as_str(), "abcd…");
+
+        // A message that fits exactly is kept whole
+        let mut buf = LineBuf::<8>::new();
+        buf.write_str("abcdefgh").unwrap();
+        assert_eq!(buf.as_str(), "abcdefgh");
+
+        // Already written text is dropped to make room for the marker
+        let mut buf = LineBuf::<8>::new();
+        buf.write_str("abcdefg").unwrap();
+        assert!(buf.write_str("hi").is_err());
+        assert_eq!(buf.as_str(), "abcde…");
     }
 }
