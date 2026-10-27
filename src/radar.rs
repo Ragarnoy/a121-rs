@@ -124,8 +124,10 @@ pub enum RadarState {
     Hibernating,
     /// The sensor's state is unknown: an operation failed in a way that can leave it busy or
     /// half-configured, such as an SPI transfer failure or a missed interrupt while measuring, or
-    /// an operation's future was dropped before it completed. Only [`Radar::reset_sensor`] and
-    /// [`Radar::calibrate`] are allowed; both power-cycle the sensor.
+    /// an operation's future was dropped before it completed. [`Radar::reset_sensor`] and
+    /// [`Radar::calibrate`] power-cycle the sensor and recover it; every other operation that
+    /// drives the sensor is refused. The diagnostics [`Radar::is_connected`] and
+    /// [`Radar::check_status`] stay available.
     Faulted,
 }
 
@@ -258,10 +260,14 @@ where
     /// # Errors
     ///
     /// Returns [`SensorError::NotReady`] when the sensor was not prepared with
-    /// [`Radar::prepare_sensor`]. Returns [`SensorError::BufferTooSmall`] when `data` is shorter
+    /// [`Radar::prepare_sensor`], or the radar is not ready, for example after a failed
+    /// measurement. Returns [`SensorError::BufferTooSmall`] when `data` is shorter
     /// than [`Processing::buffer_size`], and [`SensorError::BufferMisaligned`] when it is not
     /// aligned for any built-in type.
     pub fn process(&mut self, data: &mut [u8]) -> Result<ProcessingResult, SensorError> {
+        if self.state != RadarState::Ready {
+            return Err(SensorError::NotReady);
+        }
         match &mut self.prepared {
             Prepared::Radar(processing) => processing.execute(data),
             _ => Err(SensorError::NotReady),
@@ -313,7 +319,8 @@ where
         result
     }
 
-    /// Faults the radar if an SPI transfer failed: the sensor may be half-configured.
+    /// Faults the radar if an SPI transfer failed: the sensor may be half-configured. Used by
+    /// prepares, which can be retried after a clean SDK failure.
     pub(crate) fn fault_on_spi_error<T>(
         &mut self,
         result: Result<T, SensorError>,
@@ -387,7 +394,7 @@ where
     /// The radar is ready again, unless its configuration was changed while hibernating, in
     /// which case it must be prepared again.
     ///
-    /// If an SPI transfer fails, the sensor may be half-woken: the radar is
+    /// If waking fails, the sensor may be half-woken: the radar is
     /// [faulted](RadarState::Faulted).
     pub async fn hibernate_off(&mut self) -> Result<(), SensorError> {
         if self.state != RadarState::Hibernating {
@@ -396,14 +403,7 @@ where
 
         self.sensor.enable_sensor().await?;
         let woken = self.sensor.hibernate_off();
-        if let Err(e) = self.fault_on_spi_error(woken) {
-            if e == SensorError::SpiTransferFailed {
-                return Err(e);
-            }
-            // Still hibernating: power the sensor down again so the state stays truthful
-            let _ = self.sensor.disable_sensor().await;
-            return Err(e);
-        }
+        self.fault_on_error(woken)?;
         self.state = match self.prepared {
             Prepared::None => RadarState::Enabled,
             _ => RadarState::Ready,
@@ -447,7 +447,7 @@ where
     /// If disabling fails, the sensor is hibernating but still powered; the radar is in the
     /// hibernating state either way, and [`Radar::hibernate_off`] wakes it.
     ///
-    /// If an SPI transfer fails, the sensor may or may not be hibernating: the radar is
+    /// If hibernating fails, the sensor may or may not be hibernating: the radar is
     /// [faulted](RadarState::Faulted).
     pub async fn hibernate_on(&mut self) -> Result<(), SensorError> {
         if self.state != RadarState::Ready {
@@ -455,7 +455,7 @@ where
         }
 
         let hibernated = self.sensor.hibernate_on();
-        self.fault_on_spi_error(hibernated)?;
+        self.fault_on_error(hibernated)?;
         self.state = RadarState::Hibernating;
         self.sensor.disable_sensor().await
     }

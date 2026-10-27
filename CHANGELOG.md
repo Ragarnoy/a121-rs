@@ -54,10 +54,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Breaking:** `Radar::check_status` and `RadarDistanceDetector::print_status` return
   `Result<(), SensorError>`, failing with `SpiTransferFailed` when the status read fails.
 - **Breaking:** new `RadarState::Faulted`. The radar enters it when the sensor's state becomes
-  unknown: a failed measurement, read, calibration or reset; an SPI failure while preparing or while
-  entering or leaving hibernation; or a measurement, calibration or reset future dropped before it
-  completed, for example by a timeout. Only `Radar::reset_sensor` and `Radar::calibrate` are allowed
-  in it; both power-cycle the sensor. Detectors report it through `radar_state()`.
+  unknown: a failed measurement, read, calibration, reset, or hibernation entry or exit; an SPI
+  failure while preparing; or a measurement, calibration or reset future dropped before it
+  completed, for example by a timeout. `Radar::reset_sensor` and `Radar::calibrate` power-cycle the
+  sensor and recover it; other sensor operations and `Radar::process` are refused, while
+  `is_connected` and `check_status` stay available. Detectors report it through `radar_state()`.
 - Distance detector calibration (`calibrate_detector`, `update_calibration`) leaves the radar
   unprepared, since the SDK prepares the sensor with the detector's own configurations. It and the
   detector prepares require a powered radar that is not faulted.

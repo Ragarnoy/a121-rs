@@ -119,6 +119,9 @@ where
     ///
     /// # Errors
     ///
+    /// Returns [`SensorError::NotReady`] if the radar is hibernating or
+    /// [faulted](crate::radar::RadarState::Faulted); see [`radar_state`](Self::radar_state).
+    /// An SPI failure faults the radar.
     /// Returns [`SensorError::BufferTooSmall`] if buffer is too small.
     /// Returns [`SensorError::BufferMisaligned`] if `buffer` is not aligned for any built-in
     /// type; see [`AlignedBuffer`](crate::AlignedBuffer).
