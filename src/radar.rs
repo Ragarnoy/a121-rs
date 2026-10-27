@@ -172,6 +172,7 @@ where
     }
 
     /// Marks the sensor as prepared after a detector prepared it through the SDK
+    #[cfg(any(feature = "distance", feature = "presence"))]
     pub(crate) fn mark_prepared(&mut self) {
         self.state = RadarState::Ready;
     }
