@@ -9,17 +9,18 @@ categories = ["embedded", "no-std"]
 readme = "README.md"
 license = "MIT"
 edition = "2021"
-version = "0.2.0"
+version = "0.3.0"
 rust-version = "1.82"
 
 [dependencies]
-a121-sys = { version = "0.7.0", features = ["distance", "presence"] }
+# TODO: drop `path` once a121-sys 0.8.0 is published on crates.io
+a121-sys = { version = "0.8.0", path = "../a121-sys" }
 
 defmt = { version = "1.0.1", optional = true }
 
 embedded-hal = "1.0.0"
 embedded-hal-async = "1.0.0"
-embassy-sync = { version = "0.7.2", features = [ "defmt" ] }
+embassy-sync = "0.7.2"
 
 num = { version = "0.4", default-features = false }
 libm = { version = "0.2.15", default-features = false, optional = true }
@@ -30,8 +31,15 @@ presence = ["a121-sys/presence"]
 libm = ["dep:libm", "num/libm"]
 # Recommended if you don't want to have to link a huge chunk of newlib
 nightly-logger = ["defmt"]
-std = []
-defmt = ["dep:defmt"]
+std = ["a121-sys/std"]
+defmt = ["dep:defmt", "embassy-sync/defmt"]
+# Link against generated stub libraries instead of the Acconeer SDK (host builds and tests)
+stub_library = ["a121-sys/stub_library"]
+
+[package.metadata.docs.rs]
+# docs.rs has no Acconeer libraries, so build against the a121-sys stubs
+features = ["stub_library", "distance", "presence", "libm", "defmt"]
+rustdoc-args = ["--cfg", "docsrs"]
 
 [profile.dev]
 lto = true
