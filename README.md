@@ -101,11 +101,10 @@ since the Acconeer libraries are not public.
   what the SDK would otherwise take from newlib.
 
 The ESP32 examples use esp-hal 1.2 with esp-rtos and flash with `espflash` (`cargo run --release`).
-No Acconeer libraries for ESP were available, so they have only been compile-checked against the
-stub libraries: linking and running them on hardware are untested. Copy the libraries into the
-example's `acc/` directory; its README lists them and the environment a121-sys needs to generate
-bindings for these targets (`BINDGEN_EXTRA_CLANG_ARGS_<target>` with the C toolchain's sysroot,
-and on the ESP32-S3 `source ~/export-esp.sh` from espup).
+No Acconeer libraries for ESP were available, so they have only been built against the stub
+libraries (the ESP32-S3 one only compile-checked, see its README): linking against the real
+libraries and running them on hardware are untested. Copy the libraries into the
+example's `acc/` directory; its README lists them and the C toolchain each example needs.
 
 ## Development and Contribution
 

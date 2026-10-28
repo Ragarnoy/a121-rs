@@ -13,7 +13,7 @@ version = "0.3.0"
 rust-version = "1.99"
 
 [dependencies]
-a121-sys = "0.8.0"
+a121-sys = "0.8.1"
 
 defmt = { version = "1.0.1", optional = true }
 
