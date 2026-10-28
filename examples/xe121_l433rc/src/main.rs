@@ -1,126 +1,111 @@
 #![no_std]
 #![no_main]
 
-use core::cell::RefCell;
+extern crate alloc;
 
 use a121_rs::detector::distance::RadarDistanceDetector;
-use a121_rs::radar;
+use a121_rs::memory::sdk_heap_stats;
+use a121_rs::radar::version::rss_version;
 use a121_rs::radar::Radar;
-use a121_rs::RadarBuffer;
+use a121_rs::AlignedBuffer;
 use defmt::{info, warn};
 use embassy_executor::Spawner;
-use embassy_stm32::dma::NoDma;
-use embassy_stm32::exti::ExtiInput;
-use embassy_stm32::gpio::{Input, Level, Output, Pull, Speed};
-use embassy_stm32::peripherals::{PA11, SPI2};
+use embassy_stm32::exti::{self, ExtiInput};
+use embassy_stm32::gpio::{Level, Output, Pull, Speed};
+use embassy_stm32::mode::Blocking;
 use embassy_stm32::rcc::{
-    ClockSrc, LsConfig, Pll, PllMul, PllPDiv, PllPreDiv, PllQDiv, PllRDiv, PllSource,
+    LsConfig, Pll, PllMul, PllPDiv, PllPreDiv, PllQDiv, PllRDiv, PllSource, Sysclk,
 };
+use embassy_stm32::spi::mode::Master;
 use embassy_stm32::spi::{Config, Spi};
 use embassy_stm32::time::Hertz;
+use embassy_stm32::{bind_interrupts, interrupt};
 use embassy_time::{Delay, Duration, Timer};
 use embedded_hal_bus::spi::ExclusiveDevice;
-use num::complex::Complex32;
-use radar::version::rss_version;
-use talc::{ClaimOnOom, Span, Talc, Talck};
+use static_cell::StaticCell;
+use talc::source::Claim;
+use talc::TalcLock;
 use {defmt_rtt as _, panic_probe as _};
 
-
-pub mod io;
-
-static mut ARENA: [u8; 10000] = [0; 10000];
+// Heap for the SDK and the detector buffers
+const HEAP_SIZE: usize = 32 * 1024;
 
 #[global_allocator]
-static ALLOCATOR: Talck<spin::Mutex<()>, ClaimOnOom> = Talc::new(unsafe {
-    // if we're in a hosted environment, the Rust runtime may allocate before
-    // main() is called, so we need to initialize the arena automatically
-    ClaimOnOom::new(Span::from_const_array(core::ptr::addr_of!(ARENA)))
-})
-.lock();
+static ALLOCATOR: TalcLock<spin::Mutex<()>, Claim> = TalcLock::new(unsafe {
+    static mut HEAP: [u8; HEAP_SIZE] = [0; HEAP_SIZE];
+    Claim::array(&raw mut HEAP)
+});
 
-type SpiDeviceMutex =
-    ExclusiveDevice<Spi<'static, SPI2, NoDma, NoDma>, Output<'static, PA11>, Delay>;
-static mut SPI_DEVICE: Option<RefCell<SpiDeviceMutex>> = None;
+type RadarSpi = ExclusiveDevice<Spi<'static, Blocking, Master>, Output<'static>, Delay>;
+
+bind_interrupts!(struct Irqs {
+    EXTI9_5 => exti::InterruptHandler<interrupt::typelevel::EXTI9_5>;
+});
 
 #[embassy_executor::main]
-async fn main(spawner: Spawner) {
+async fn main(_spawner: Spawner) {
     info!("Starting");
-    let p = embassy_stm32::init(xm125_clock_config());
+    let p = embassy_stm32::init(clock_config());
 
     let enable = Output::new(p.PC2, Level::Low, Speed::VeryHigh);
     let cs_pin = Output::new(p.PA11, Level::High, Speed::VeryHigh);
+    // Sensor select lines of the XE121: all low selects sensor 1
     let _sel0 = Output::new(p.PC3, Level::Low, Speed::VeryHigh);
     let _sel1 = Output::new(p.PA1, Level::Low, Speed::VeryHigh);
     let _sel2 = Output::new(p.PA0, Level::Low, Speed::VeryHigh);
-    let input = Input::new(p.PB6, Pull::Up);
-    let interrupt = ExtiInput::new(input, p.EXTI6);
+    let interrupt = ExtiInput::new(p.PB6, p.EXTI6, Pull::Up, Irqs);
     info!("GPIO initialized");
 
-    let button = Input::new(p.PC13, Pull::Down);
-    let button = ExtiInput::new(button, p.EXTI13);
-
-    let spi = Spi::new(
+    let spi = Spi::new_blocking(
         p.SPI2,
         p.PB13, // SCK
         p.PB15, // MOSI
         p.PB14, // MISO
-        NoDma,
-        NoDma,
-        xm125_spi_config(),
+        spi_config(),
     );
-    let exclusive_device = ExclusiveDevice::new(spi, cs_pin, Delay);
+    static SPI_DEVICE: StaticCell<RadarSpi> = StaticCell::new();
+    let spi_device =
+        SPI_DEVICE.init(ExclusiveDevice::new(spi, cs_pin, Delay).expect("SPI device init failed"));
     info!("SPI initialized");
-
-    unsafe { SPI_DEVICE = Some(RefCell::new(exclusive_device)) };
-    let spi_mut_ref = unsafe { SPI_DEVICE.as_mut().unwrap() };
 
     info!("RSS Version: {}", rss_version());
 
-    let mut radar = Radar::new(1, spi_mut_ref.get_mut(), interrupt, enable, Delay)
+    let mut radar = Radar::new(1, spi_device, interrupt, enable, Delay)
         .await
         .unwrap();
     info!("Radar enabled");
-    let mut buffer = RadarBuffer::<2560>::new();
     let mut calibration = loop {
-        buffer.fill(0);
-        if let Ok(calibration) = radar.calibrate().await {
-            if let Ok(()) = calibration.validate_calibration() {
-                info!("Calibration is valid");
-                break calibration;
-            } else {
-                warn!("Calibration is invalid");
-                warn!("Calibration result: {:?}", calibration);
-            }
-        } else {
-            warn!("Calibration failed");
+        match radar.calibrate().await {
+            Ok(calibration) if calibration.validate_calibration().is_ok() => break calibration,
+            Ok(calibration) => warn!("Calibration is invalid: {:?}", calibration),
+            Err(e) => warn!("Calibration failed: {:?}", e),
         }
         Timer::after(Duration::from_millis(1)).await;
     };
-    info!("Calibration complete!");
+    info!("Calibration complete");
     radar.prepare_sensor(&mut calibration).unwrap();
+
     let mut distance = RadarDistanceDetector::new(&mut radar).unwrap();
-    let mut buffer = RadarBuffer::<{ 2560 * 3 }>::new();
-    let mut static_call_result = RadarBuffer::<2560>::new();
-    let mut dynamic_call_result = distance
-        .calibrate_detector(&calibration, &mut buffer, &mut static_call_result)
+    // Buffer sizes depend on the detector configuration, so ask the SDK
+    let sizes = distance.memory_requirements().unwrap();
+    info!("Detector buffers: {}", sizes);
+    let mut buffer = AlignedBuffer::new(sizes.buffer);
+    let mut static_cal_result = AlignedBuffer::new(sizes.static_calibration);
+    let mut dynamic_cal_result = distance
+        .calibrate_detector(&calibration, &mut buffer, &mut static_cal_result)
         .await
         .unwrap();
-
-    spawner.spawn(io::button_task(button)).unwrap();
+    info!("SDK heap after detector calibration: {}", sdk_heap_stats());
 
     loop {
         Timer::after(Duration::from_millis(200)).await;
-        'inner: loop {
-            distance
-                .prepare_detector(&calibration, &mut buffer)
-                .unwrap();
-            distance.measure(&mut buffer).await.unwrap();
+        distance
+            .prepare_detector(&calibration, &mut buffer)
+            .unwrap();
+        distance.measure(&mut buffer).await.unwrap();
 
-            if let Ok(res) = distance.process_data(
-                &mut buffer,
-                &mut static_call_result,
-                &mut dynamic_call_result,
-            ) {
+        match distance.process_data(&mut buffer, &mut static_cal_result, &mut dynamic_cal_result) {
+            Ok(res) => {
                 if res.num_distances() > 0 {
                     info!(
                         "{} Distances found:\n{:?}",
@@ -130,32 +115,30 @@ async fn main(spawner: Spawner) {
                 }
                 if res.calibration_needed() {
                     info!("Calibration needed");
-                    break 'inner;
+                    calibration = distance.calibrate().await.unwrap();
+                    dynamic_cal_result = distance
+                        .update_calibration(&calibration, &mut buffer)
+                        .await
+                        .unwrap();
                 }
-            } else {
-                warn!("Failed to process data");
             }
+            Err(_) => warn!("Failed to process data"),
         }
-        calibration = distance.calibrate().await.unwrap();
-        dynamic_call_result = distance
-            .update_calibration(&calibration, &mut buffer)
-            .await
-            .unwrap();
     }
 }
 
-fn xm125_spi_config() -> Config {
+fn spi_config() -> Config {
     let mut spi_config = Config::default();
     spi_config.frequency = Hertz(1_000_000);
     spi_config
 }
 
-fn xm125_clock_config() -> embassy_stm32::Config {
+fn clock_config() -> embassy_stm32::Config {
     let mut config = embassy_stm32::Config::default();
     config.rcc.hsi = true;
     config.rcc.hse = None;
     config.rcc.msi = None;
-    config.rcc.mux = ClockSrc::PLL1_R;
+    config.rcc.sys = Sysclk::PLL1_R;
     config.rcc.pll = Some(Pll {
         source: PllSource::HSI,
         prediv: PllPreDiv::DIV1,
@@ -174,59 +157,4 @@ fn xm125_clock_config() -> embassy_stm32::Config {
     });
     config.rcc.ls = LsConfig::default_lsi();
     config
-}
-
-#[no_mangle]
-pub extern "C" fn __hardfp_cosf(f: f32) -> f32 {
-    libm::cosf(f)
-}
-
-#[no_mangle]
-pub extern "C" fn __hardfp_sinf(f: f32) -> f32 {
-    libm::sinf(f)
-}
-
-#[no_mangle]
-pub extern "C" fn __hardfp_roundf(f: f32) -> f32 {
-    libm::roundf(f)
-}
-
-#[no_mangle]
-pub extern "C" fn __hardfp_sqrtf(f: f32) -> f32 {
-    libm::sqrtf(f)
-}
-
-#[no_mangle]
-pub extern "C" fn __hardfp_powf(f: f32, g: f32) -> f32 {
-    libm::powf(f, g)
-}
-
-#[no_mangle]
-pub extern "C" fn __hardfp_cexpf(f: Complex32) -> Complex32 {
-    f.exp()
-}
-
-#[no_mangle]
-pub extern "C" fn __hardfp_cabsf(f: Complex32) -> f32 {
-    libm::hypotf(f.re, f.im)
-}
-
-#[no_mangle]
-pub extern "C" fn __hardfp_atanf(f: f32) -> f32 {
-    libm::atanf(f)
-}
-
-#[no_mangle]
-pub extern "C" fn __hardfp_floorf(f: f32) -> f32 {
-    libm::floorf(f)
-}
-
-#[no_mangle]
-pub extern "C" fn __hardfp_log10f(f: f32) -> f32 {
-    libm::log10f(f)
-}
-
-#[no_mangle]
-pub extern "C" fn __hardfp_exp2f(f: f32) -> f32 {
-    libm::exp2f(f)
 }

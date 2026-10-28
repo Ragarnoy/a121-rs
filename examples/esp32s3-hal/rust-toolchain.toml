@@ -1,2 +1,3 @@
 [toolchain]
+# The Xtensa fork of Rust, installed with `espup`. Must be 1.99 or newer (a121-rs MSRV)
 channel = "esp"

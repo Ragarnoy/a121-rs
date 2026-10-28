@@ -12,4 +12,7 @@ rustflags = [
 target = "thumbv7em-none-eabihf"
 
 [env]
-DEFMT_LOG = "trace"
+DEFMT_LOG = "info"
+# Directory holding the Acconeer A121 SDK libraries for Cortex-M4 (libacconeer_a121.a and the
+# detector libraries). Override it from the environment.
+ACC_RSS_LIBS = { value = "/usr/lib/acconeer", relative = false }

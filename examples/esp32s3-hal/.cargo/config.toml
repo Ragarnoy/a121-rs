@@ -1,26 +1,19 @@
 [target.xtensa-esp32s3-none-elf]
-runner = "espflash flash --monitor --log-format defmt"
-
-
-[build]
+runner = "espflash flash --monitor --chip esp32s3 --log-format defmt"
 rustflags = [
+  "-C", "link-arg=-nostartfiles",
   "-C", "link-arg=-Tlinkall.x",
   "-C", "link-arg=-Tdefmt.x",
-  "-C", "link-arg=-Tlibgcc.x",
-  "-C", "link-arg=-nostartfiles",
-  "-C", "link-arg=-lm",
-  #"-C", "link-arg=-lc",
 ]
 
+[env]
+DEFMT_LOG = "info"
+# Directory holding the Acconeer A121 static libraries for the ESP32-S3, see acc/README.md
+ACC_RSS_LIBS = { value = "acc", relative = true }
+
+[build]
 target = "xtensa-esp32s3-none-elf"
 
 [unstable]
-build-std = ["core", "alloc"]
-
-[env]
-MCU="esp32s3"
-# Note: this variable is not used by the pio builder (`cargo build --features pio`)
-ESP_IDF_VERSION = "v5.1.2"
-CROSS_COMPILE="xtensa-esp32s3-elf"
-DEFMT_LOG="trace"
-ACC_RSS_LIBS={ value = "acc", relative = true }
+# Xtensa targets ship no prebuilt core/alloc
+build-std = ["alloc", "core"]

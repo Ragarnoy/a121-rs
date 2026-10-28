@@ -6,27 +6,22 @@ edition = "2021"
 license = "MIT"
 
 [dependencies]
-esp-backtrace = { version = "0.11.0", features = [
-    "esp32c6",
-    "exception-handler",
-    "panic-handler",
-    "println",
-] }
-esp-hal = { version = "0.16.0", features = [ "esp32c6", "async", "embassy", "embassy-time-timg0", "embassy-executor-thread"] }
-esp-println = { version = "0.9.0", default-features = false, features = ["esp32c6", "log", "jtag-serial", "defmt-espflash"] }
-log = { version = "0.4.20" }
-esp-alloc = { version = "0.3.0" }
-embassy-executor = {version = "0.5.0", features = ["nightly"] }
-embassy-time = {version = "0.3.0", default-features = false , features = ["generic-queue-8"]}
-embedded-hal-bus = { version = "0.1.0", features = ["async"] }
+esp-hal = { version = "1.2.2", features = ["esp32c6", "defmt", "unstable"] }
+esp-rtos = { version = "0.4.0", features = ["esp32c6", "embassy", "defmt"] }
+esp-bootloader-esp-idf = { version = "0.6.0", features = ["esp32c6", "defmt"] }
+esp-alloc = { version = "0.11.0", features = ["esp32c6", "defmt"] }
+esp-backtrace = { version = "0.20.0", features = ["esp32c6", "panic-handler", "defmt"] }
+esp-println = { version = "0.18.0", features = ["esp32c6", "defmt-espflash"] }
+defmt = "1.0.1"
+embassy-executor = "0.10.0"
+embassy-time = "0.5.1"
 embedded-hal = "1.0.0"
+embedded-hal-bus = "0.3.0"
+static_cell = "2.1.1"
 a121-rs = { path = "../../", features = ["distance", "logger", "libm"] }
-static_cell = { version = "2.0.0", features = ["nightly"] }
-defmt = "0.3.5"
-tinyrlibc = { git = "https://github.com/rust-embedded-community/tinyrlibc.git", version = "0.3.0", features = ["alloc"] }
 
 [profile.dev]
-# Rust debug is too slow. 
+# Rust debug is too slow.
 # For debug builds always builds with some optimization
 opt-level = "s"
 

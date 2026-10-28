@@ -5,20 +5,20 @@ authors = ["Noah"]
 edition = "2021"
 license = "MIT OR Apache-2.0"
 
+[dependencies]
+esp-hal = { version = "1.2.2", features = ["esp32s3", "defmt", "unstable"] }
+esp-rtos = { version = "0.4.0", features = ["esp32s3", "embassy", "defmt"] }
+esp-bootloader-esp-idf = { version = "0.6.0", features = ["esp32s3", "defmt"] }
+esp-alloc = { version = "0.11.0", features = ["esp32s3", "defmt"] }
+esp-backtrace = { version = "0.20.0", features = ["esp32s3", "panic-handler", "defmt"] }
+esp-println = { version = "0.18.0", features = ["esp32s3", "defmt-espflash"] }
+defmt = "1.0.1"
+embassy-executor = "0.10.0"
+embassy-time = "0.5.1"
+embedded-hal = "1.0.0"
+embedded-hal-bus = "0.3.0"
+static_cell = "2.1.1"
+a121-rs = { path = "../../", features = ["distance", "logger", "libm"] }
+
 [profile.release]
 debug = true
-
-[dependencies]
-esp-hal = { version = "0.16.1", features = ["async", "eh1", "embassy", "embassy-time-timg0", "embassy-executor-thread", "esp32s3"] }
-esp-backtrace = { version = "0.11.0", features = ["esp32s3", "panic-handler", "exception-handler", "println"] }
-esp-println = { version = "0.9.0", features = ["esp32s3", "defmt-espflash"] }
-defmt = "0.3.5"
-
-a121-rs = { path = "../../", features = ["distance", "logger"] }
-embedded-hal-bus = { version = "0.1.0", features = ["async"] }
-embedded-hal = "1.0.0"
-tinyrlibc = { git = "https://github.com/rust-embedded-community/tinyrlibc.git", version = "0.3.0" }
-embedded-alloc = "0.5.1"
-embassy-executor = { version = "0.5.0", features = ["nightly", "integrated-timers", "executor-thread"] }
-static_cell = { version = "2.0.0", features = ["nightly"] }
-embassy-time = "0.3.0"
