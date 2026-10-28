@@ -1,12 +1,13 @@
 use core::cell::{Cell, RefCell};
 use core::ffi::{c_char, c_void};
+use core::ptr::NonNull;
 
 #[cfg(feature = "defmt")]
 use core::ffi::CStr;
 
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::blocking_mutex::Mutex;
-use embedded_hal::spi::{ErrorKind as SpiErrorKind, SpiDevice};
+use embedded_hal::spi::SpiDevice;
 
 use a121_sys::{acc_hal_a121_t, acc_hal_optimization_t, acc_rss_hal_register, acc_sensor_id_t};
 #[cfg(feature = "defmt")]
@@ -23,127 +24,237 @@ use crate::sensor::error::SensorError;
 #[cfg(any(feature = "logger", test))]
 mod printf;
 
-pub type RadarSpi = dyn SpiDevice<u8, Error = SpiErrorKind> + Send;
-pub type RefRadarSpi = &'static mut RadarSpi;
-
-/// Global instance of a Mutex, wrapping a RefCell that optionally contains a mutable reference to a `SpiBus`.
+/// The most sensors that can be in use at once, each with its own SPI device.
 ///
-/// `SPI_INSTANCE` is used to store and provide controlled access to the SPI device required by the radar sensor.
-/// The `Mutex` ensures thread-safe access in environments where multi-threading is possible, while the `RefCell`
-/// allows for mutable access to the SPI device. This setup is crucial for enabling SPI communications in a safe
-/// and controlled manner within the radar sensor's hardware abstraction layer.
+/// The SDK does not document whether it is reentrant, so SDK calls on different radars must not
+/// run concurrently, for example from executors at different interrupt priorities or on
+/// different cores.
+pub const MAX_SENSORS: usize = 4;
+
+/// Transfers a buffer in place on the SPI device behind the pointer, returning `false` on failure.
+type TransferFn = unsafe fn(NonNull<()>, &mut [u8]) -> bool;
+
+/// The SPI device of one sensor, with whether a transfer failed since the flag was last read.
+///
+/// The device is type-erased: `transfer` was instantiated for the type `spi` points to.
+#[derive(Clone, Copy)]
+struct Slot {
+    sensor_id: u32,
+    spi: NonNull<()>,
+    transfer: TransferFn,
+    failed: bool,
+}
+
+// SAFETY: `spi` is only dereferenced by the transfer callback during an SDK call on its sensor.
+// That call needs the sensor's radar, which is neither `Send` nor `Sync`, so it runs on the
+// thread that created the radar and registered the device.
+unsafe impl Send for Slot {}
+
+/// The sensors in use, keyed by sensor id.
+struct SlotTable<const N: usize> {
+    slots: [Option<Slot>; N],
+}
+
+impl<const N: usize> SlotTable<N> {
+    const fn new() -> Self {
+        Self { slots: [None; N] }
+    }
+
+    fn position(&self, sensor_id: u32) -> Option<usize> {
+        self.slots
+            .iter()
+            .position(|slot| slot.is_some_and(|slot| slot.sensor_id == sensor_id))
+    }
+
+    fn find(&mut self, sensor_id: u32) -> Option<&mut Slot> {
+        let index = self.position(sensor_id)?;
+        self.slots[index].as_mut()
+    }
+
+    /// Fails with [`SensorError::SensorUnavailable`] if the sensor is already in use or every
+    /// slot is taken.
+    fn claim(
+        &mut self,
+        sensor_id: u32,
+        spi: NonNull<()>,
+        transfer: TransferFn,
+    ) -> Result<(), SensorError> {
+        if self.find(sensor_id).is_some() {
+            return Err(SensorError::SensorUnavailable);
+        }
+        let free = self
+            .slots
+            .iter_mut()
+            .find(|slot| slot.is_none())
+            .ok_or(SensorError::SensorUnavailable)?;
+        *free = Some(Slot {
+            sensor_id,
+            spi,
+            transfer,
+            failed: false,
+        });
+        Ok(())
+    }
+
+    fn release(&mut self, sensor_id: u32) {
+        if let Some(index) = self.position(sensor_id) {
+            self.slots[index] = None;
+        }
+    }
+
+    fn device(&mut self, sensor_id: u32) -> Option<(NonNull<()>, TransferFn)> {
+        self.find(sensor_id).map(|slot| (slot.spi, slot.transfer))
+    }
+
+    fn record_failure(&mut self, sensor_id: u32) {
+        if let Some(slot) = self.find(sensor_id) {
+            slot.failed = true;
+        }
+    }
+
+    /// Returns and clears whether a transfer failed. A sensor without an SPI device cannot
+    /// transfer, so it always reports a failure.
+    fn take_failure(&mut self, sensor_id: u32) -> bool {
+        self.find(sensor_id)
+            .is_none_or(|slot| core::mem::take(&mut slot.failed))
+    }
+}
+
+static SLOTS: Mutex<CriticalSectionRawMutex, RefCell<SlotTable<MAX_SENSORS>>> =
+    Mutex::new(RefCell::new(SlotTable::new()));
+
+/// Keeps a sensor's SPI device registered until dropped.
+pub(crate) struct SpiRegistration {
+    sensor_id: u32,
+}
+
+impl Drop for SpiRegistration {
+    fn drop(&mut self) {
+        SLOTS.lock(|slots| slots.borrow_mut().release(self.sensor_id));
+    }
+}
+
+/// Registers `spi` as the SPI device of `sensor_id` until the returned guard is dropped.
 ///
 /// # Safety
 ///
-/// The access to the `SPI_INSTANCE` is controlled via a mutex to prevent concurrent access issues.
-/// However, care must be taken to ensure that the SPI device is properly initialized before use
-/// and is not accessed after it has been freed or gone out of scope.
-static SPI_INSTANCE: Mutex<CriticalSectionRawMutex, RefCell<Option<RefRadarSpi>>> =
-    Mutex::new(RefCell::new(None));
-
-/// Set when an SPI transfer fails. The SDK transfer callback cannot return an error, so
-/// [`spi_checked`] reads this after each SDK call that talks to the sensor.
-static SPI_FAILED: Mutex<CriticalSectionRawMutex, Cell<bool>> = Mutex::new(Cell::new(false));
-
-fn record_spi_failure() {
-    SPI_FAILED.lock(|failed| failed.set(true));
+/// `spi` must come from a `&'static mut SPI`, and nothing else may access the device until the
+/// guard is dropped. The guard must be owned by a radar, which is neither `Send` nor `Sync`.
+pub(crate) unsafe fn register_spi<SPI>(
+    sensor_id: u32,
+    spi: NonNull<SPI>,
+) -> Result<SpiRegistration, SensorError>
+where
+    SPI: SpiDevice<u8> + 'static,
+{
+    SLOTS.lock(|slots| {
+        slots
+            .borrow_mut()
+            .claim(sensor_id, spi.cast(), transfer_with::<SPI>)
+    })?;
+    Ok(SpiRegistration { sensor_id })
 }
 
-/// Runs an SDK call that talks to the sensor, and fails if any SPI transfer failed during it.
+/// # Safety
+///
+/// `spi` must point to an `SPI` registered with [`register_spi`], with no other access to it.
+unsafe fn transfer_with<SPI: SpiDevice<u8>>(spi: NonNull<()>, buffer: &mut [u8]) -> bool {
+    match unsafe { spi.cast::<SPI>().as_mut() }.transfer_in_place(buffer) {
+        Ok(()) => true,
+        Err(_e) => {
+            #[cfg(feature = "defmt")]
+            defmt::error!("SPI transfer failed: {}", defmt::Debug2Format(&_e));
+            false
+        }
+    }
+}
+
+/// SPI transfer callback for the SDK. It cannot return an error, so a failure is recorded for
+/// [`spi_checked`] to report.
+extern "C" fn transfer8_function(
+    sensor_id: acc_sensor_id_t,
+    buffer: *mut u8,
+    buffer_length: usize,
+) {
+    if buffer_length == 0 {
+        return;
+    }
+    let Some((spi, transfer)) = SLOTS.lock(|slots| slots.borrow_mut().device(sensor_id)) else {
+        #[cfg(feature = "defmt")]
+        defmt::error!(
+            "SPI transfer requested for sensor {} without an SPI device",
+            sensor_id
+        );
+        return;
+    };
+    if buffer.is_null() {
+        SLOTS.lock(|slots| slots.borrow_mut().record_failure(sensor_id));
+        return;
+    }
+    // SAFETY: the SDK passes a buffer of `buffer_length` bytes
+    let buffer = unsafe { core::slice::from_raw_parts_mut(buffer, buffer_length) };
+    // The transfer runs outside the critical section, so interrupts stay enabled. Only an SDK
+    // call on this sensor transfers on its device, and that call holds the sensor's radar, which
+    // is neither `Send` nor `Sync`; the slot is released only when the radar is dropped.
+    if !unsafe { transfer(spi, buffer) } {
+        SLOTS.lock(|slots| slots.borrow_mut().record_failure(sensor_id));
+    }
+}
+
+/// Runs an SDK call that talks to the sensor, and fails if any SPI transfer to it failed
+/// during the call.
 ///
 /// The SDK can report success after a failed transfer, since it never learns about it.
-pub(crate) fn spi_checked<T>(f: impl FnOnce() -> T) -> Result<T, SensorError> {
-    match with_spi_status(f) {
+pub(crate) fn spi_checked<T>(sensor_id: u32, f: impl FnOnce() -> T) -> Result<T, SensorError> {
+    match with_spi_status(sensor_id, f) {
         (result, false) => Ok(result),
         (_, true) => Err(SensorError::SpiTransferFailed),
     }
 }
 
-/// Runs an SDK call and returns its result with whether an SPI transfer failed during it, for
-/// calls whose result must be cleaned up either way.
-pub(crate) fn with_spi_status<T>(f: impl FnOnce() -> T) -> (T, bool) {
-    SPI_FAILED.lock(|failed| failed.set(false));
+/// Runs an SDK call and returns its result with whether an SPI transfer to the sensor failed
+/// during it, for calls whose result must be cleaned up either way.
+pub(crate) fn with_spi_status<T>(sensor_id: u32, f: impl FnOnce() -> T) -> (T, bool) {
+    SLOTS.lock(|slots| slots.borrow_mut().take_failure(sensor_id));
     let result = f();
-    (result, SPI_FAILED.lock(|failed| failed.replace(false)))
+    let failed = SLOTS.lock(|slots| slots.borrow_mut().take_failure(sensor_id));
+    (result, failed)
 }
 
-/// Represents the hardware abstraction layer implementation for the radar sensor.
+/// The HAL handed to the SDK. It is static because the SDK may keep the pointer it is given.
+static HAL: acc_hal_a121_t = acc_hal_a121_t {
+    max_spi_transfer_size: u16::MAX,
+    mem_alloc: Some(mem_alloc),
+    mem_free: Some(mem_free),
+    transfer: Some(transfer8_function),
+    #[cfg(feature = "logger")]
+    log: Some(logger),
+    #[cfg(not(feature = "logger"))]
+    log: Some(a121_sys::c_log_stub),
+    optimization: acc_hal_optimization_t { transfer16: None },
+};
+
+static HAL_REGISTERED: Mutex<CriticalSectionRawMutex, Cell<bool>> = Mutex::new(Cell::new(false));
+
+/// Registers the HAL with the SDK, once.
 ///
-/// This struct encapsulates the necessary functionality to interface with the radar sensor
-/// using the SPI communication protocol and provides methods for memory management and logging.
-pub struct AccHalImpl {
-    inner: acc_hal_a121_t,
-}
-
-impl AccHalImpl {
-    /// Constructs a new `AccHalImpl` instance, registering the SPI device and initializing
-    /// the radar hardware abstraction layer.
-    ///
-    /// # Arguments
-    ///
-    /// * `spi` - A reference to an SPI device that implements the `SpiBus` trait.
-    pub fn new<SPI>(spi: &'static mut SPI) -> Self
-    where
-        SPI: SpiDevice<u8, Error = SpiErrorKind> + Send + 'static,
-    {
-        let inner = acc_hal_a121_t {
-            max_spi_transfer_size: u16::MAX,
-            mem_alloc: Some(mem_alloc),
-            mem_free: Some(mem_free),
-            transfer: Some(Self::transfer8_function),
-            #[cfg(feature = "logger")]
-            log: Some(logger),
-            #[cfg(not(feature = "logger"))]
-            log: Some(a121_sys::c_log_stub),
-            optimization: acc_hal_optimization_t { transfer16: None },
-        };
-        SPI_INSTANCE.lock(|cell| cell.replace(Some(spi)));
-        Self { inner }
-    }
-
-    extern "C" fn transfer8_function(
-        _sensor_id: acc_sensor_id_t,
-        buffer: *mut u8,
-        buffer_length: usize,
-    ) {
-        let tmp_buf = unsafe { core::slice::from_raw_parts_mut(buffer, buffer_length) };
-        // Borrow a mutable reference to the SpiBus
-        SPI_INSTANCE.lock(|cell| {
-            let mut binding = cell.borrow_mut();
-            let Some(spi) = binding.as_mut() else {
-                #[cfg(feature = "defmt")]
-                defmt::error!("SPI transfer requested before an SPI device was registered");
-                record_spi_failure();
-                return;
-            };
-            // Perform the SPI transfer. The SDK callback cannot report errors, so record the
-            // failure for spi_checked to return.
-            if let Err(_e) = spi.transfer_in_place(tmp_buf) {
-                #[cfg(feature = "defmt")]
-                defmt::error!("SPI transfer failed: {}", defmt::Debug2Format(&_e));
-                record_spi_failure();
+/// # Errors
+///
+/// Returns [`SensorError::InitFailed`] when the SDK rejects the HAL; the next call tries again.
+pub(crate) fn ensure_registered() -> Result<(), SensorError> {
+    // Registration only stores the HAL, so it runs inside the critical section, which makes
+    // checking and registering atomic
+    HAL_REGISTERED.lock(|registered| {
+        if !registered.get() {
+            #[cfg(feature = "defmt")]
+            defmt::trace!("Registering HAL");
+            if !unsafe { acc_rss_hal_register(&HAL) } {
+                return Err(SensorError::InitFailed);
             }
-        });
-    }
-
-    /// Registers the HAL implementation with the radar SDK.
-    ///
-    /// This method should be called to register the HAL implementation, allowing the
-    /// radar sensor to communicate using the provided SPI interface.
-    /// # Errors
-    ///
-    /// Returns `SensorError::InitFailed` when the HAL registration fails.
-    #[inline(always)]
-    pub fn register(&self) -> Result<(), SensorError> {
-        #[cfg(feature = "defmt")]
-        defmt::trace!("Registering HAL");
-        let result = unsafe { acc_rss_hal_register(&self.inner) };
-        if result {
-            Ok(())
-        } else {
-            Err(SensorError::InitFailed)
+            registered.set(true);
         }
-    }
+        Ok(())
+    })
 }
 
 use alloc::alloc::{alloc, dealloc, Layout};
@@ -286,20 +397,137 @@ pub unsafe extern "C" fn rust_log(_level: u32, _message: *const c_char) {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
+    use embedded_hal::spi::{ErrorKind, ErrorType, Operation};
+
+    #[derive(Debug)]
+    pub(crate) struct MockError;
+
+    impl embedded_hal::spi::Error for MockError {
+        fn kind(&self) -> ErrorKind {
+            ErrorKind::Other
+        }
+    }
+
+    /// Inverts the bytes it transfers, or fails every transfer.
+    pub(crate) struct MockSpi {
+        pub(crate) fail: bool,
+    }
+
+    impl ErrorType for MockSpi {
+        type Error = MockError;
+    }
+
+    impl SpiDevice<u8> for MockSpi {
+        fn transaction(&mut self, operations: &mut [Operation<'_, u8>]) -> Result<(), MockError> {
+            if self.fail {
+                return Err(MockError);
+            }
+            for operation in operations {
+                if let Operation::TransferInPlace(words) = operation {
+                    words.iter_mut().for_each(|word| *word = !*word);
+                }
+            }
+            Ok(())
+        }
+    }
+
+    fn leak_spi(fail: bool) -> NonNull<MockSpi> {
+        NonNull::from(alloc::boxed::Box::leak(alloc::boxed::Box::new(MockSpi {
+            fail,
+        })))
+    }
+
+    unsafe fn no_transfer(_: NonNull<()>, _: &mut [u8]) -> bool {
+        true
+    }
 
     #[test]
-    fn spi_checked_reports_failed_transfers() {
-        assert_eq!(spi_checked(|| 1), Ok(1));
+    fn slot_table_claims_and_releases() {
+        let mut table = SlotTable::<2>::new();
+        let spi = NonNull::<u8>::dangling().cast();
+        assert_eq!(table.claim(1, spi, no_transfer), Ok(()));
         assert_eq!(
-            spi_checked(|| {
-                record_spi_failure();
-                true
-            }),
+            table.claim(1, spi, no_transfer),
+            Err(SensorError::SensorUnavailable)
+        );
+        assert_eq!(table.claim(2, spi, no_transfer), Ok(()));
+        assert_eq!(
+            table.claim(3, spi, no_transfer),
+            Err(SensorError::SensorUnavailable)
+        );
+        table.release(1);
+        assert!(table.device(1).is_none());
+        assert_eq!(table.claim(3, spi, no_transfer), Ok(()));
+        assert!(table.device(2).is_some());
+    }
+
+    #[test]
+    fn slot_table_tracks_failures_per_sensor() {
+        let mut table = SlotTable::<2>::new();
+        let spi = NonNull::<u8>::dangling().cast();
+        table.claim(1, spi, no_transfer).unwrap();
+        table.claim(2, spi, no_transfer).unwrap();
+        table.record_failure(1);
+        assert!(!table.take_failure(2));
+        assert!(table.take_failure(1));
+        assert!(!table.take_failure(1));
+        // No device, no transfer
+        assert!(table.take_failure(3));
+    }
+
+    extern crate std;
+
+    /// Serializes the tests that use the static slot table, which only has room for
+    /// MAX_SENSORS sensors.
+    pub(crate) fn lock_static_slots() -> std::sync::MutexGuard<'static, ()> {
+        static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    #[test]
+    fn transfers_reach_the_sensors_device() {
+        let _lock = lock_static_slots();
+        let registration = unsafe { register_spi(1001, leak_spi(false)) }.unwrap();
+        let mut buffer = [0x0f, 0xf0];
+        let result = spi_checked(1001, || {
+            transfer8_function(1001, buffer.as_mut_ptr(), buffer.len());
+            7
+        });
+        assert_eq!(result, Ok(7));
+        assert_eq!(buffer, [0xf0, 0x0f]);
+        assert_eq!(
+            unsafe { register_spi(1001, leak_spi(false)) }.err(),
+            Some(SensorError::SensorUnavailable)
+        );
+        drop(registration);
+        assert!(unsafe { register_spi(1001, leak_spi(false)) }.is_ok());
+    }
+
+    #[test]
+    fn spi_failures_are_reported_for_their_sensor_only() {
+        let _lock = lock_static_slots();
+        let _failing = unsafe { register_spi(1002, leak_spi(true)) }.unwrap();
+        let _working = unsafe { register_spi(1003, leak_spi(false)) }.unwrap();
+        let mut buffer = [0u8; 4];
+        let mut transfer = |sensor_id| transfer8_function(sensor_id, buffer.as_mut_ptr(), 4);
+        // An empty transfer does nothing, and a missing buffer fails
+        assert_eq!(
+            spi_checked(1003, || transfer8_function(1003, core::ptr::null_mut(), 0)),
+            Ok(())
+        );
+        assert_eq!(
+            spi_checked(1003, || transfer8_function(1003, core::ptr::null_mut(), 4)),
             Err(SensorError::SpiTransferFailed)
         );
+        assert_eq!(
+            spi_checked(1002, || transfer(1002)),
+            Err(SensorError::SpiTransferFailed)
+        );
+        assert_eq!(spi_checked(1003, || transfer(1002)), Ok(()));
         // The flag does not leak into the next call
-        assert_eq!(spi_checked(|| 2), Ok(2));
+        assert_eq!(spi_checked(1002, || 2), Ok(2));
+        assert_eq!(spi_checked(1003, || transfer(1003)), Ok(()));
     }
 }

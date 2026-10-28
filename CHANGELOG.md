@@ -65,7 +65,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The xe125 example links newlib's `sinf`, `cosf` and `tanf` instead of the compiler_builtins ones,
   which saves about 10 KB of flash, and logs at `info` level by default.
 - **Breaking:** narrowed the public API to what users of the crate need. These are no longer public:
-  the `hal` module (`AccHalImpl`, `RadarSpi`, `RefRadarSpi`; `Radar::new` sets up the HAL), the
+  the `hal` module (`Radar::new` sets up the HAL), the
   `libm` module (its `extern "C"` math functions are still linked), `RadarConfig::ptr`,
   `CalibrationResult::new` (use `Default`), `CalibrationInfo::mut_ptr`, `Processing::new` and `execute` (use `Radar::process`),
   `ProcessingMetaData::new` and `mut_ptr`, `RssVersion::new`, `MemoryRequirements::new`,
@@ -73,6 +73,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `radar` and `config` fields of `RadarDistanceDetector` and `PresenceDetector`. Removed the unused
   `ProcessingMetaData::ptr` and `PresenceMetadata::new`. `PresenceDetector::measure` and `calibrate`
   replace access through the `radar` field, as on `RadarDistanceDetector`.
+- **Breaking:** `Radar::new` accepts any `SpiDevice<u8>`, whatever its error type and including
+  `!Send` devices such as `RefCellDevice` on a shared bus, so the SPI adapters the examples needed
+  are gone. It returns `RadarInitError` on failure, which holds the
+  `SensorError` and hands back the SPI device and pins so creation can be retried; it converts to
+  `SensorError` with `?`.
+- **Breaking:** `Radar`, `RadarDistanceDetector` and `PresenceDetector` take the SPI device type as
+  their first type parameter.
+- **Breaking:** new `SensorError::SensorUnavailable`, returned by `Radar::new` when a radar for the
+  sensor id exists or `MAX_SENSORS` radars exist.
 
 ### Added
 - `logger` feature: log SDK messages through a Rust variadic function (defmt) instead of the C logging
@@ -95,6 +104,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `RadarDistanceDetector` and `PresenceDetector` forward `hibernate_on`, `hibernate_off` and
   `reset_sensor` to their radar, so a detector can hibernate between frames without being dropped
   and recalibrated.
+- Multi-sensor support: up to `radar::MAX_SENSORS` (4) radars, each with its own sensor id and SPI
+  device.
+- `Radar::free`: destroys the radar and returns its SPI device and pins.
 
 ### Fixed
 - `libm` feature: `cabsf` and `cexpf` had the wrong signatures. They took a single `f32` instead of a
@@ -131,6 +143,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   memory.
 - CI: tests now run (they were gated on a matrix that did not exist), the example job checks the
   example instead of the library, and host jobs build against the stub libraries.
+- The HAL registered with the SDK was a temporary that moved after registration. It is static and
+  registered once.
+- A second `Radar::new` replaced the first radar's SPI device. SPI transfers are routed by sensor
+  id, and SPI failures are tracked per sensor.
+- SPI transfers no longer run inside a critical section, so interrupts stay enabled during them.
 
 ### Removed
 - The unused 16-bit SPI transfer callback, which contained `todo!()`.

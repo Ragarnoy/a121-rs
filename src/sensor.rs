@@ -20,6 +20,7 @@ pub mod error;
 pub struct InnerSensor {
     /// Non-null pointer to acc_sensor_t, guaranteed valid by construction.
     inner: NonNull<acc_sensor_t>,
+    id: u32,
 }
 
 impl InnerSensor {
@@ -29,8 +30,9 @@ impl InnerSensor {
     /// - The sensor must be powered on before calling this function
     /// - The sensor must not be used in another sensor instance without a power/reset cycle
     pub fn new(sensor_id: u32) -> Result<Self, SensorError> {
-        let (sensor_ptr, spi_failed) =
-            with_spi_status(|| unsafe { acc_sensor_create(sensor_id as acc_sensor_id_t) });
+        let (sensor_ptr, spi_failed) = with_spi_status(sensor_id, || unsafe {
+            acc_sensor_create(sensor_id as acc_sensor_id_t)
+        });
         let Some(inner) = NonNull::new(sensor_ptr) else {
             #[cfg(feature = "defmt")]
             defmt::error!("Failed to create sensor {}", sensor_id);
@@ -41,7 +43,10 @@ impl InnerSensor {
             });
         };
         // Owning the pointer destroys a sensor created despite a failed transfer
-        let sensor = Self { inner };
+        let sensor = Self {
+            inner,
+            id: sensor_id,
+        };
         if spi_failed {
             return Err(SensorError::SpiTransferFailed);
         }
@@ -89,26 +94,29 @@ where
     ENABLE: OutputPin,
     DLY: DelayNs,
 {
-    /// Creates a new sensor instance for the given sensor ID.
-    ///
-    /// A sensor instance represents a physical radar sensor and handles communication with it.
-    /// This method will power on the sensor and create a new instance of the sensor.
-    ///
-    /// # Arguments
-    /// * `sensor_id` - The sensor ID to use for communication.
-    ///
-    /// # Errors
-    /// [`SensorError::InitFailed`] if the SDK could not create the sensor, or
-    /// [`SensorError::SpiTransferFailed`] if an SPI transfer failed while creating it.
-    pub fn new(sensor_id: u32, enable_pin: ENABLE, delay: DLY) -> Result<Self, SensorError> {
-        #[cfg(feature = "defmt")]
-        defmt::trace!("Creating sensor {}", sensor_id);
-        let inner = InnerSensor::new(sensor_id)?;
-        Ok(Self {
+    /// Wraps a created sensor with its enable pin.
+    pub fn new(inner: InnerSensor, enable_pin: ENABLE, delay: DLY) -> Self {
+        Self {
             inner,
             enable_pin,
             dly: delay,
-        })
+        }
+    }
+
+    /// The sensor id.
+    pub fn id(&self) -> u32 {
+        self.inner.id
+    }
+
+    /// Destroys the sensor and returns its enable pin and delay.
+    pub fn into_parts(self) -> (ENABLE, DLY) {
+        let Self {
+            inner,
+            enable_pin,
+            dly,
+        } = self;
+        drop(inner);
+        (enable_pin, dly)
     }
 
     pub async fn reset_sensor(&mut self) -> Result<(), SensorError> {
@@ -144,7 +152,7 @@ where
         self.reset_sensor().await?;
 
         loop {
-            let calibration_attempt = spi_checked(|| unsafe {
+            let calibration_attempt = spi_checked(self.inner.id, || unsafe {
                 acc_sensor_calibrate(
                     self.inner.deref_mut(),
                     &mut calibration_complete as *mut bool,
@@ -195,7 +203,7 @@ where
         cal_result: &mut CalibrationResult,
         buffer: &mut [u8],
     ) -> Result<(), SensorError> {
-        let ret = spi_checked(|| unsafe {
+        let ret = spi_checked(self.inner.id, || unsafe {
             acc_sensor_prepare(
                 self.inner.deref_mut(),
                 config.ptr(),
@@ -214,7 +222,9 @@ where
     }
 
     pub fn check_status(&self) -> Result<(), SensorError> {
-        spi_checked(|| unsafe { acc_sensor_status(self.inner.deref()) })
+        spi_checked(self.inner.id, || unsafe {
+            acc_sensor_status(self.inner.deref())
+        })
     }
 
     /// Prepares the sensor for entering hibernation.
@@ -224,8 +234,9 @@ where
     /// # Returns
     /// `Ok(())` if preparation was successful, `Err(SensorHibernationError)` otherwise.
     pub fn hibernate_on(&mut self) -> Result<(), SensorError> {
-        let ret_status =
-            spi_checked(|| unsafe { acc_sensor_hibernate_on(self.inner.deref_mut()) })?;
+        let ret_status = spi_checked(self.inner.id, || unsafe {
+            acc_sensor_hibernate_on(self.inner.deref_mut())
+        })?;
         if ret_status {
             Ok(())
         } else {
@@ -240,7 +251,9 @@ where
     /// # Returns
     /// `Ok(())` if unpreparation was successful, `Err(SensorHibernationError)` otherwise.
     pub fn hibernate_off(&self) -> Result<(), SensorError> {
-        let ret_status = spi_checked(|| unsafe { acc_sensor_hibernate_off(self.inner.deref()) })?;
+        let ret_status = spi_checked(self.inner.id, || unsafe {
+            acc_sensor_hibernate_off(self.inner.deref())
+        })?;
         if ret_status {
             Ok(())
         } else {
@@ -250,7 +263,9 @@ where
 
     pub async fn measure<SINT: Wait>(&mut self, mut interrupt: SINT) -> Result<(), SensorError> {
         // Implementation to start the radar measurement
-        let success = spi_checked(|| unsafe { acc_sensor_measure(self.inner.deref_mut()) })?;
+        let success = spi_checked(self.inner.id, || unsafe {
+            acc_sensor_measure(self.inner.deref_mut())
+        })?;
         if success {
             interrupt
                 .wait_for_high()
@@ -280,7 +295,7 @@ where
     /// `Ok(())` if data was successfully read into the buffer, `Err(SensorError)` otherwise.
     pub fn read(&self, buffer: &mut [u8]) -> Result<(), SensorError> {
         // Implementation to read the radar data
-        let success = spi_checked(|| unsafe {
+        let success = spi_checked(self.inner.id, || unsafe {
             acc_sensor_read(
                 self.inner.deref(),
                 buffer.as_mut_ptr() as *mut c_void,

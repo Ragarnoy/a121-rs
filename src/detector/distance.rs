@@ -5,6 +5,7 @@ use core::ffi::c_void;
 use core::ptr::NonNull;
 
 use embedded_hal::digital::OutputPin;
+use embedded_hal::spi::SpiDevice;
 use embedded_hal_async::delay::DelayNs;
 use embedded_hal_async::digital::Wait;
 
@@ -46,28 +47,30 @@ impl Drop for InnerRadarDistanceDetector {
 }
 
 /// The main structure representing the radar distance detector.
-pub struct RadarDistanceDetector<'radar, SINT, ENABLE, DLY>
+pub struct RadarDistanceDetector<'radar, SPI, SINT, ENABLE, DLY>
 where
+    SPI: SpiDevice<u8> + 'static,
     SINT: Wait,
     ENABLE: OutputPin,
     DLY: DelayNs,
 {
     /// Reference to the radar system, configured and ready for operation.
-    radar: &'radar mut Radar<SINT, ENABLE, DLY>,
+    radar: &'radar mut Radar<SPI, SINT, ENABLE, DLY>,
     inner: InnerRadarDistanceDetector,
     /// Configuration for the radar distance detection.
     config: RadarDistanceConfig,
 }
 
-impl<'radar, SINT, ENABLE, DLY> RadarDistanceDetector<'radar, SINT, ENABLE, DLY>
+impl<'radar, SPI, SINT, ENABLE, DLY> RadarDistanceDetector<'radar, SPI, SINT, ENABLE, DLY>
 where
+    SPI: SpiDevice<u8> + 'static,
     SINT: Wait,
     ENABLE: OutputPin,
     DLY: DelayNs,
 {
     /// Constructs a new radar distance detector with default configuration.
     /// Returns an error if the radar is not in Ready state.
-    pub fn new(radar: &'radar mut Radar<SINT, ENABLE, DLY>) -> Result<Self, SensorError> {
+    pub fn new(radar: &'radar mut Radar<SPI, SINT, ENABLE, DLY>) -> Result<Self, SensorError> {
         if radar.state() != RadarState::Ready {
             return Err(SensorError::NotReady);
         }
@@ -85,7 +88,7 @@ where
     /// Constructs a new radar distance detector with the provided configuration.
     /// Returns an error if the radar is not in Ready state.
     pub fn with_config(
-        radar: &'radar mut Radar<SINT, ENABLE, DLY>,
+        radar: &'radar mut Radar<SPI, SINT, ENABLE, DLY>,
         config: RadarDistanceConfig,
     ) -> Result<Self, SensorError> {
         if radar.state() != RadarState::Ready {
@@ -125,7 +128,8 @@ where
     ///
     /// ```no_run
     /// # use a121_rs::detector::distance::RadarDistanceDetector;
-    /// # async fn example(mut detector: RadarDistanceDetector<'_, impl embedded_hal_async::digital::Wait,
+    /// # async fn example(mut detector: RadarDistanceDetector<'_, impl embedded_hal::spi::SpiDevice<u8>,
+    /// #                             impl embedded_hal_async::digital::Wait,
     /// #                             impl embedded_hal::digital::OutputPin,
     /// #                             impl embedded_hal_async::delay::DelayNs>,
     /// #                  calibration: a121_rs::CalibrationResult) {
@@ -187,7 +191,8 @@ where
     /// ```no_run
     /// # use a121_rs::detector::distance::RadarDistanceDetector;
     /// # use a121_rs::memory::calc_distance_external_heap;
-    /// # async fn example(mut detector: RadarDistanceDetector<'_, impl embedded_hal_async::digital::Wait,
+    /// # async fn example(mut detector: RadarDistanceDetector<'_, impl embedded_hal::spi::SpiDevice<u8>,
+    /// #                             impl embedded_hal_async::digital::Wait,
     /// #                             impl embedded_hal::digital::OutputPin,
     /// #                             impl embedded_hal_async::delay::DelayNs>,
     /// #                  calibration: a121_rs::CalibrationResult) {
@@ -214,12 +219,13 @@ where
     ) -> Result<DynamicResult, SensorError> {
         let mut detector_cal_result_dynamic = DynamicResult::default();
         let sensor = self.radar.inner_sensor();
+        let sensor_id = self.radar.id();
         let inner = &mut self.inner;
 
         // NO BUFFER SIZE CHECKS - caller must ensure buffers are large enough
         self.radar
             .run_detector_calibration(|calibration_complete| {
-                spi_checked(|| {
+                spi_checked(sensor_id, || {
                     acc_detector_distance_calibrate(
                         sensor,
                         inner.inner_mut(),
@@ -278,7 +284,8 @@ where
     /// ```no_run
     /// # use a121_rs::radar::Radar;
     /// # use a121_rs::detector::distance::RadarDistanceDetector;
-    /// # fn example(radar: &mut Radar<impl embedded_hal_async::digital::Wait,
+    /// # fn example(radar: &mut Radar<impl embedded_hal::spi::SpiDevice<u8>,
+    /// #                  impl embedded_hal_async::digital::Wait,
     /// #                             impl embedded_hal::digital::OutputPin,
     /// #                             impl embedded_hal_async::delay::DelayNs>) {
     /// let mut detector = RadarDistanceDetector::new(radar).unwrap();
@@ -337,11 +344,12 @@ where
     ) -> Result<DynamicResult, SensorError> {
         let mut detector_cal_result_dynamic = DynamicResult::default();
         let sensor = self.radar.inner_sensor();
+        let sensor_id = self.radar.id();
         let inner = &mut self.inner;
 
         self.radar
             .run_detector_calibration(|calibration_complete| {
-                spi_checked(|| {
+                spi_checked(sensor_id, || {
                     acc_detector_distance_update_calibration(
                         sensor,
                         inner.inner_mut(),
@@ -398,7 +406,7 @@ where
         let buffer_size = DistanceSizes::new(&self.inner)?.buffer_size;
         // The sensor is no longer prepared as before, even if this prepare fails
         self.radar.unprepare();
-        let prepared = spi_checked(|| {
+        let prepared = spi_checked(self.radar.id(), || {
             acc_detector_distance_prepare(
                 self.inner.inner(),
                 self.config.inner.as_ptr(),

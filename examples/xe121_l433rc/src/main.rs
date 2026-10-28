@@ -25,9 +25,7 @@ use radar::version::rss_version;
 use talc::{ClaimOnOom, Span, Talc, Talck};
 use {defmt_rtt as _, panic_probe as _};
 
-use crate::adapter::SpiAdapter;
 
-mod adapter;
 pub mod io;
 
 static mut ARENA: [u8; 10000] = [0; 10000];
@@ -42,7 +40,7 @@ static ALLOCATOR: Talck<spin::Mutex<()>, ClaimOnOom> = Talc::new(unsafe {
 
 type SpiDeviceMutex =
     ExclusiveDevice<Spi<'static, SPI2, NoDma, NoDma>, Output<'static, PA11>, Delay>;
-static mut SPI_DEVICE: Option<RefCell<SpiAdapter<SpiDeviceMutex>>> = None;
+static mut SPI_DEVICE: Option<RefCell<SpiDeviceMutex>> = None;
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
@@ -73,7 +71,7 @@ async fn main(spawner: Spawner) {
     let exclusive_device = ExclusiveDevice::new(spi, cs_pin, Delay);
     info!("SPI initialized");
 
-    unsafe { SPI_DEVICE = Some(RefCell::new(SpiAdapter::new(exclusive_device))) };
+    unsafe { SPI_DEVICE = Some(RefCell::new(exclusive_device)) };
     let spi_mut_ref = unsafe { SPI_DEVICE.as_mut().unwrap() };
 
     info!("RSS Version: {}", rss_version());

@@ -16,10 +16,6 @@ use embassy_time::Delay;
 use embedded_hal_bus::spi::ExclusiveDevice;
 use talc::{ClaimOnOom, Span, Talc, Talck};
 
-use crate::adapter::SpiAdapter;
-
-pub mod adapter;
-
 // Heap for dynamic allocation - increased size for C library usage
 const HEAP_SIZE: usize = 32 * 1024; // 32KB heap (more space for C library)
 static mut HEAP: [u8; HEAP_SIZE] = [0; HEAP_SIZE];
@@ -32,7 +28,7 @@ pub static ALLOCATOR: Talck<spin::Mutex<()>, ClaimOnOom> = Talc::new(unsafe {
 .lock();
 
 pub type SpiDeviceMutex = ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>;
-pub static mut SPI_DEVICE: Option<RefCell<SpiAdapter<SpiDeviceMutex>>> = None;
+pub static mut SPI_DEVICE: Option<RefCell<SpiDeviceMutex>> = None;
 
 pub fn xm125_spi_config() -> Config {
     let mut spi_config = Config::default();

@@ -18,7 +18,6 @@ use a121_rs::detector::distance::RadarDistanceDetector;
 use a121_rs::radar::version::rss_version;
 use a121_rs::radar::Radar;
 use a121_rs::AlignedBuffer;
-use xe125_nightly::adapter::SpiAdapter;
 use xe125_nightly::*;
 use {defmt_rtt as _, panic_probe as _};
 
@@ -43,9 +42,9 @@ async fn main(_spawner: Spawner) {
     let exclusive_device = ExclusiveDevice::new(spi, cs_pin, Delay);
 
     unsafe {
-        SPI_DEVICE = Some(RefCell::new(SpiAdapter::new(
+        SPI_DEVICE = Some(RefCell::new(
             exclusive_device.expect("SPI device init failed!"),
-        )))
+        ))
     };
     let spi_mut_ref = unsafe {
         let spi_ptr = core::ptr::addr_of_mut!(SPI_DEVICE);
