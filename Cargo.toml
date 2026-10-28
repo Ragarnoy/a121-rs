@@ -40,12 +40,14 @@ logger = ["defmt"]
 nightly-logger = ["logger"]
 std = ["a121-sys/std"]
 defmt = ["dep:defmt", "embassy-sync/defmt"]
+# Count the memory the SDK allocates, see `memory::sdk_heap_stats`
+heap-stats = []
 # Link against generated stub libraries instead of the Acconeer SDK (host builds and tests)
 stub_library = ["a121-sys/stub_library"]
 
 [package.metadata.docs.rs]
 # docs.rs has no Acconeer libraries, so build against the a121-sys stubs
-features = ["stub_library", "distance", "presence", "libm", "defmt"]
+features = ["stub_library", "distance", "presence", "libm", "defmt", "heap-stats"]
 rustdoc-args = ["--cfg", "docsrs"]
 
 [profile.dev]

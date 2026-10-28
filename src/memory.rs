@@ -1,64 +1,43 @@
-//! Memory Calculation Module
+//! Memory sizing for radar sessions and detectors
 //!
-//! This module provides utilities to calculate memory requirements for radar operations
-//! both at runtime and compile-time. This allows embedded systems to pre-validate memory
-//! availability and allocate appropriately-sized buffers.
+//! The SDK uses two kinds of memory:
 //!
-//! The calculations are based on the Acconeer A121 SDK memory model and match the reference
-//! implementation from the Python exploration tool.
+//! - **Buffers** the application allocates and passes in, such as sweep and calibration buffers.
+//! - **RSS heap** the SDK allocates itself through the global allocator.
 //!
-//! # Memory Types
+//! How exact the numbers are depends on where they come from:
 //!
-//! The radar system uses two types of heap memory:
+//! | Memory | Source | Exactness |
+//! |---|---|---|
+//! | Detector buffers | `get_distance_buffer_size`, `get_static_result_buffer_size`, `PresenceDetector::get_buffer_size`, or `memory_requirements` on the detector | Exact, reported by the SDK |
+//! | Session buffer | [`RadarConfig::config_buffer_size`](crate::config::RadarConfig::config_buffer_size) | Exact, reported by the SDK |
+//! | Session memory | [`SessionMemoryCalculator`](crate::memory::SessionMemoryCalculator), [`calc_session_total`](crate::memory::calc_session_total) | Acconeer's memory model, which it states is within ±5% |
+//! | SDK heap | `heap-stats` feature, `sdk_heap_stats` | Measured at run time |
 //!
-//! - **External Heap**: Used for large data buffers (sweep data, calibration buffers)
-//! - **RSS Heap**: Used by the Radar System Software for configuration and processing
+//! The SDK has no query for its heap, which for a detector depends on the configuration it builds
+//! internally. To size the heap, enable the `heap-stats` feature and read `sdk_heap_stats` after
+//! the application has run a frame. The statistics cover every SDK allocation, for all radars,
+//! detectors and processing; to measure one part, compare `current` before and after creating it.
 //!
-//! # Runtime Usage
-//!
-//! ```no_run
-//! use a121_rs::config::RadarConfig;
-//! use a121_rs::memory::DistanceMemoryCalculator;
-//!
-//! let config = RadarConfig::new().unwrap();
-//! let calc = DistanceMemoryCalculator::new(&config);
-//!
-//! // Check total memory requirement before allocating
-//! let total_memory = calc.memory_requirements().total;
-//! println!("Distance detector requires {} bytes", total_memory);
-//!
-//! // Allocate buffers with correct sizes
-//! let mut buffer = a121_rs::AlignedBuffer::new(calc.buffer_size());
-//! let mut static_cal = a121_rs::AlignedBuffer::new(calc.static_calibration_size());
-//! ```
-//!
-//! # Compile-Time Usage
-//!
-//! For static configurations known at compile time, use const functions:
+//! # Session memory at compile time
 //!
 //! ```
 //! use a121_rs::memory::{calc_session_external_heap, calc_session_rss_heap};
 //!
-//! // Configuration parameters known at compile time
 //! const NUM_POINTS: u16 = 100;
 //! const NUM_SUBSWEEPS: u8 = 1;
 //! const SWEEPS_PER_FRAME: u16 = 16;
 //!
-//! // Calculate at compile time
 //! const EXTERNAL_HEAP: usize = calc_session_external_heap(NUM_POINTS, NUM_SUBSWEEPS, SWEEPS_PER_FRAME);
 //! const RSS_HEAP: usize = calc_session_rss_heap(NUM_SUBSWEEPS);
 //! const TOTAL_MEMORY: usize = EXTERNAL_HEAP + RSS_HEAP;
-//!
-//! // Use in static buffer allocation
-//! static mut BUFFER: [u8; EXTERNAL_HEAP] = [0; EXTERNAL_HEAP];
 //! ```
 //!
-//! Or use the convenience macro:
+//! Or with the macro:
 //!
 //! ```
 //! use a121_rs::memory_for_session;
 //!
-//! // Calculate total memory at compile time
 //! const TOTAL_MEMORY: usize = memory_for_session!(
 //!     num_points: 100,
 //!     num_subsweeps: 1,
@@ -68,8 +47,7 @@
 
 use crate::config::RadarConfig;
 
-// Constants from Acconeer A121 SDK memory model
-// These match the reference Python implementation
+// Constants from Acconeer's A121 memory model (exptool `a121/model/memory.py`)
 
 /// Overhead for external heap allocations
 const OVERHEAD: usize = 68;
@@ -89,38 +67,15 @@ const RSS_HEAP_PER_SENSOR: usize = 636;
 /// RSS heap memory per configuration
 const RSS_HEAP_PER_CONFIG: usize = 512;
 
-/// Size of float in bytes
-const SIZE_OF_FLOAT: usize = 4;
-
-/// Presence detector heap overhead
-const PRESENCE_HEAP_OVERHEAD: usize = 256;
-
-/// Distance detector heap overhead
-const DISTANCE_HEAP_OVERHEAD: usize = 1028;
-
-/// Distance detector heap per processor
-const DISTANCE_HEAP_PER_PROCESSOR: usize = 224;
-
-/// Padding length for filtfilt filtering operations (distance detector)
-const FILTFILT_PAD_LEN: usize = 9;
-
-/// Number of filter parameters per point for presence detection
-const PRESENCE_FILTER_PARAMS: usize = 7;
-
-/// Minimum static calibration buffer size for distance detection
-const DISTANCE_MIN_STATIC_CAL_SIZE: usize = 2048;
-
 // ============================================================================
 // Compile-Time Memory Calculation Functions
 // ============================================================================
-//
-// These const fn functions can be evaluated at compile time, allowing static
-// buffer allocation in embedded systems.
 
 /// Calculate external heap memory for a session at compile time
 ///
 /// # Parameters
-/// - `num_points_per_subsweep`: Number of points per subsweep
+/// - `num_points_per_subsweep`: Number of points per subsweep. If the subsweeps differ, pass
+///   their total divided by `num_subsweeps`, rounded up.
 /// - `num_subsweeps`: Number of subsweeps
 /// - `sweeps_per_frame`: Number of sweeps per frame
 ///
@@ -137,14 +92,17 @@ pub const fn calc_session_external_heap(
 ) -> usize {
     let total_points =
         num_points_per_subsweep as usize * num_subsweeps as usize * sweeps_per_frame as usize;
-    let buffer_size = total_points * BYTES_PER_POINT;
+    external_heap_for_points(total_points)
+}
 
+/// External heap for a frame of `total_points` points, over all subsweeps and sweeps.
+const fn external_heap_for_points(total_points: usize) -> usize {
+    let buffer_size = total_points * BYTES_PER_POINT;
     let base = if buffer_size > CALIB_BUFFER {
         buffer_size
     } else {
         CALIB_BUFFER
     };
-
     base + OVERHEAD
 }
 
@@ -183,165 +141,6 @@ pub const fn calc_session_total(
         + calc_session_rss_heap(num_subsweeps)
 }
 
-/// Calculate external heap memory for presence detection at compile time
-///
-/// # Parameters
-/// - `num_points`: Total number of points across all subsweeps
-/// - `num_subsweeps`: Number of subsweeps
-/// - `sweeps_per_frame`: Number of sweeps per frame
-///
-/// # Example
-/// ```
-/// use a121_rs::memory::calc_presence_external_heap;
-/// const BUFFER_SIZE: usize = calc_presence_external_heap(100, 1, 16);
-/// ```
-pub const fn calc_presence_external_heap(
-    num_points: u16,
-    num_subsweeps: u8,
-    sweeps_per_frame: u16,
-) -> usize {
-    let session_ext = calc_session_external_heap(num_points, num_subsweeps, sweeps_per_frame);
-    let presence_ext = num_points as usize * 2 * SIZE_OF_FLOAT;
-    session_ext + presence_ext
-}
-
-/// Calculate RSS heap memory for presence detection at compile time
-///
-/// # Parameters
-/// - `num_points`: Total number of points across all subsweeps
-/// - `num_subsweeps`: Number of subsweeps
-///
-/// # Example
-/// ```
-/// use a121_rs::memory::calc_presence_rss_heap;
-/// const RSS_MEMORY: usize = calc_presence_rss_heap(100, 1);
-/// ```
-pub const fn calc_presence_rss_heap(num_points: u16, num_subsweeps: u8) -> usize {
-    let session_rss = RSS_HEAP_PER_CONFIG + (num_subsweeps as usize * RSS_HEAP_PER_SUBSWEEP);
-    let presence_rss = num_points as usize * PRESENCE_FILTER_PARAMS * SIZE_OF_FLOAT;
-    PRESENCE_HEAP_OVERHEAD + presence_rss + RSS_HEAP_PER_SENSOR + session_rss
-}
-
-/// Calculate total presence detection memory at compile time
-///
-/// # Parameters
-/// - `num_points`: Total number of points across all subsweeps
-/// - `num_subsweeps`: Number of subsweeps
-/// - `sweeps_per_frame`: Number of sweeps per frame
-///
-/// # Example
-/// ```
-/// use a121_rs::memory::calc_presence_total;
-/// const TOTAL_MEMORY: usize = calc_presence_total(100, 1, 16);
-/// ```
-pub const fn calc_presence_total(
-    num_points: u16,
-    num_subsweeps: u8,
-    sweeps_per_frame: u16,
-) -> usize {
-    calc_presence_external_heap(num_points, num_subsweeps, sweeps_per_frame)
-        + calc_presence_rss_heap(num_points, num_subsweeps)
-}
-
-/// Calculate external heap memory for distance detection at compile time
-///
-/// This is a conservative estimate for distance detection.
-///
-/// # Parameters
-/// - `num_points`: Total number of points across all subsweeps
-/// - `num_subsweeps`: Number of subsweeps
-/// - `sweeps_per_frame`: Number of sweeps per frame
-///
-/// # Example
-/// ```
-/// use a121_rs::memory::calc_distance_external_heap;
-/// const BUFFER_SIZE: usize = calc_distance_external_heap(100, 1, 16);
-/// ```
-pub const fn calc_distance_external_heap(
-    num_points: u16,
-    num_subsweeps: u8,
-    sweeps_per_frame: u16,
-) -> usize {
-    let session_ext = calc_session_external_heap(num_points, num_subsweeps, sweeps_per_frame);
-
-    // Work buffer for filtering (with padding)
-    let work_buffer = (num_points as usize + 2 * FILTFILT_PAD_LEN) * 2 * SIZE_OF_FLOAT;
-
-    // Calibration buffers (conservative estimate)
-    let calib_buffer = num_points as usize * SIZE_OF_FLOAT * 3;
-
-    // Additional buffer for close range if using multiple sweeps
-    let close_range_buffer = if sweeps_per_frame > 1 {
-        sweeps_per_frame as usize * num_points as usize * SIZE_OF_FLOAT
-    } else {
-        0
-    };
-
-    session_ext + work_buffer + calib_buffer + close_range_buffer
-}
-
-/// Calculate RSS heap memory for distance detection at compile time
-///
-/// # Parameters
-/// - `num_subsweeps`: Number of subsweeps
-///
-/// # Example
-/// ```
-/// use a121_rs::memory::calc_distance_rss_heap;
-/// const RSS_MEMORY: usize = calc_distance_rss_heap(1);
-/// ```
-pub const fn calc_distance_rss_heap(num_subsweeps: u8) -> usize {
-    let session_rss = RSS_HEAP_PER_CONFIG + (num_subsweeps as usize * RSS_HEAP_PER_SUBSWEEP);
-    // Conservative estimate: assume 2 processors
-    let processor_heap = DISTANCE_HEAP_PER_PROCESSOR * 2;
-    DISTANCE_HEAP_OVERHEAD + processor_heap + RSS_HEAP_PER_SENSOR + session_rss
-}
-
-/// Calculate total distance detection memory at compile time
-///
-/// # Parameters
-/// - `num_points`: Total number of points across all subsweeps
-/// - `num_subsweeps`: Number of subsweeps
-/// - `sweeps_per_frame`: Number of sweeps per frame
-///
-/// # Example
-/// ```
-/// use a121_rs::memory::calc_distance_total;
-/// const TOTAL_MEMORY: usize = calc_distance_total(100, 1, 16);
-/// ```
-pub const fn calc_distance_total(
-    num_points: u16,
-    num_subsweeps: u8,
-    sweeps_per_frame: u16,
-) -> usize {
-    calc_distance_external_heap(num_points, num_subsweeps, sweeps_per_frame)
-        + calc_distance_rss_heap(num_subsweeps)
-}
-
-/// Calculate static calibration buffer size for distance detection at compile time
-///
-/// # Parameters
-/// - `num_points`: Total number of points across all subsweeps
-///
-/// # Example
-/// ```
-/// use a121_rs::memory::calc_distance_static_cal_size;
-/// const CAL_BUFFER_SIZE: usize = calc_distance_static_cal_size(100);
-/// static mut CAL_BUFFER: [u8; CAL_BUFFER_SIZE] = [0; CAL_BUFFER_SIZE];
-/// ```
-pub const fn calc_distance_static_cal_size(num_points: u16) -> usize {
-    let calculated = num_points as usize * SIZE_OF_FLOAT * 2;
-    if calculated > DISTANCE_MIN_STATIC_CAL_SIZE {
-        calculated
-    } else {
-        DISTANCE_MIN_STATIC_CAL_SIZE
-    }
-}
-
-// ============================================================================
-// Compile-Time Convenience Macros
-// ============================================================================
-
 /// Calculate total session memory at compile time (macro version)
 ///
 /// # Example
@@ -360,44 +159,8 @@ macro_rules! memory_for_session {
     };
 }
 
-/// Calculate total presence detection memory at compile time (macro version)
-///
-/// # Example
-/// ```
-/// use a121_rs::memory_for_presence;
-/// const MEMORY: usize = memory_for_presence!(
-///     num_points: 100,
-///     num_subsweeps: 1,
-///     sweeps_per_frame: 16
-/// );
-/// ```
-#[macro_export]
-macro_rules! memory_for_presence {
-    (num_points: $points:expr, num_subsweeps: $subsweeps:expr, sweeps_per_frame: $sweeps:expr) => {
-        $crate::memory::calc_presence_total($points, $subsweeps, $sweeps)
-    };
-}
-
-/// Calculate total distance detection memory at compile time (macro version)
-///
-/// # Example
-/// ```
-/// use a121_rs::memory_for_distance;
-/// const MEMORY: usize = memory_for_distance!(
-///     num_points: 100,
-///     num_subsweeps: 1,
-///     sweeps_per_frame: 16
-/// );
-/// ```
-#[macro_export]
-macro_rules! memory_for_distance {
-    (num_points: $points:expr, num_subsweeps: $subsweeps:expr, sweeps_per_frame: $sweeps:expr) => {
-        $crate::memory::calc_distance_total($points, $subsweeps, $sweeps)
-    };
-}
-
 // ============================================================================
-// Runtime Memory Calculation (original implementation)
+// Runtime Memory Calculation
 // ============================================================================
 
 /// Memory breakdown for a radar configuration
@@ -412,7 +175,6 @@ pub struct MemoryRequirements {
 }
 
 impl MemoryRequirements {
-    /// Creates a new MemoryRequirements instance
     fn new(external_heap: usize, rss_heap: usize) -> Self {
         Self {
             external_heap,
@@ -422,7 +184,18 @@ impl MemoryRequirements {
     }
 }
 
-/// Base radar session memory calculator
+/// Sum of the points of all subsweeps in `config`, for one sweep.
+fn total_points(config: &RadarConfig) -> usize {
+    (0..config.num_subsweep())
+        .filter_map(|index| config.get_subsweep(index))
+        .map(|subsweep| subsweep.num_points(config) as usize)
+        .sum()
+}
+
+/// Session memory calculator for a [`Radar`](crate::radar::Radar) using a [`RadarConfig`]
+/// directly, following Acconeer's memory model.
+///
+/// Detectors configure their own sessions; use their `memory_requirements` instead.
 pub struct SessionMemoryCalculator<'a> {
     config: &'a RadarConfig,
 }
@@ -433,33 +206,19 @@ impl<'a> SessionMemoryCalculator<'a> {
         Self { config }
     }
 
-    /// Calculates total number of points across all subsweeps and frames
-    fn total_num_points(&self) -> usize {
-        let num_subsweeps = self.config.num_subsweep() as usize;
-        let sweeps_per_frame = self.config.sweeps_per_frame() as usize;
-
-        let total_points: usize = (0..num_subsweeps as u8)
-            .filter_map(|i| self.config.get_subsweep(i))
-            .map(|subsweep| subsweep.num_points(self.config) as usize)
-            .sum();
-
-        total_points * sweeps_per_frame
-    }
-
     /// Calculates external heap memory for a sweep operation
     pub fn external_heap(&self) -> usize {
-        let total_points = self.total_num_points();
-        let buffer_size = total_points * BYTES_PER_POINT;
-        buffer_size.max(CALIB_BUFFER) + OVERHEAD
+        external_heap_for_points(
+            total_points(self.config) * self.config.sweeps_per_frame() as usize,
+        )
     }
 
     /// Calculates RSS heap memory for a sweep operation.
     ///
     /// This includes all RSS heap components: per-config, per-subsweep, and per-sensor overhead.
-    /// Consistent with compile-time `calc_session_rss_heap()`.
+    /// Consistent with compile-time [`calc_session_rss_heap`].
     pub fn rss_heap(&self) -> usize {
-        let num_subsweeps = self.config.num_subsweep() as usize;
-        RSS_HEAP_PER_CONFIG + num_subsweeps * RSS_HEAP_PER_SUBSWEEP + RSS_HEAP_PER_SENSOR
+        calc_session_rss_heap(self.config.num_subsweep())
     }
 
     /// Calculates total memory requirements
@@ -468,157 +227,122 @@ impl<'a> SessionMemoryCalculator<'a> {
     }
 }
 
-/// Presence detector memory calculator
-pub struct PresenceMemoryCalculator<'a> {
-    config: &'a RadarConfig,
-}
-
-impl<'a> PresenceMemoryCalculator<'a> {
-    /// Creates a new presence memory calculator from a radar configuration
-    ///
-    /// Note: This assumes the RadarConfig has been configured by the presence detector.
-    /// For accurate results, use this after calling presence detector configuration methods.
-    pub fn new(config: &'a RadarConfig) -> Self {
-        Self { config }
-    }
-
-    /// Calculates total number of points for presence detection
-    fn total_num_points(&self) -> usize {
-        let num_subsweeps = self.config.num_subsweep() as usize;
-        let total_points: usize = (0..num_subsweeps as u8)
-            .filter_map(|i| self.config.get_subsweep(i))
-            .map(|subsweep| subsweep.num_points(self.config) as usize)
-            .sum();
-        total_points
-    }
-
-    /// Calculates external heap memory for presence detection
-    pub fn external_heap(&self) -> usize {
-        let session_calc = SessionMemoryCalculator::new(self.config);
-        let session_ext = session_calc.external_heap();
-
-        let num_points = self.total_num_points();
-        let presence_ext = num_points * 2 * SIZE_OF_FLOAT;
-
-        session_ext + presence_ext
-    }
-
-    /// Calculates RSS heap memory for presence detection
-    pub fn rss_heap(&self) -> usize {
-        let session_calc = SessionMemoryCalculator::new(self.config);
-        let sweep_rss = session_calc.rss_heap();
-
-        let num_points = self.total_num_points();
-        let presence_rss = num_points * PRESENCE_FILTER_PARAMS * SIZE_OF_FLOAT;
-
-        PRESENCE_HEAP_OVERHEAD + presence_rss + sweep_rss
-    }
-
-    /// Calculates total memory requirements for presence detection
-    pub fn memory_requirements(&self) -> MemoryRequirements {
-        MemoryRequirements::new(self.external_heap(), self.rss_heap())
-    }
-
-    /// Returns the buffer size needed for presence detection operations
-    ///
-    /// This is the size you should allocate for the buffer passed to
-    /// `prepare_detector()` and `detect_presence()` methods.
-    pub fn buffer_size(&self) -> usize {
-        // Buffer size is primarily the external heap requirement
-        // This is a conservative estimate
-        self.external_heap()
-    }
-}
-
-/// Distance detector memory calculator
+/// Buffer sizes a detector needs, as reported by the SDK for its configuration.
 ///
-/// Note: This provides conservative estimates for distance detection memory requirements.
-/// The actual memory usage depends on measurement type, threshold method, and other
-/// configuration parameters that may not be fully accessible through the Rust API.
-pub struct DistanceMemoryCalculator<'a> {
-    config: &'a RadarConfig,
+/// The detector's RSS heap is not included: the SDK has no query for it. Measure it with the
+/// `heap-stats` feature and `sdk_heap_stats`.
+#[cfg(any(feature = "distance", feature = "presence"))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct DetectorMemory {
+    /// Size of the buffer passed to calibration, prepare, measure and process calls (bytes)
+    pub buffer: usize,
+    /// Size of the static calibration result buffer (bytes). Zero for the presence detector.
+    pub static_calibration: usize,
 }
 
-impl<'a> DistanceMemoryCalculator<'a> {
-    /// Creates a new distance memory calculator from a radar configuration
-    ///
-    /// Note: This assumes the RadarConfig has been configured by the distance detector.
-    /// For accurate results, use this after calling distance detector configuration methods.
-    pub fn new(config: &'a RadarConfig) -> Self {
-        Self { config }
+// ============================================================================
+// SDK heap statistics
+// ============================================================================
+
+/// Memory the SDK has allocated through the HAL, counted when the `heap-stats` feature is on.
+///
+/// The counts cover every SDK allocation: all radars, detectors and processing.
+///
+/// Sizes are those the SDK requested. Each allocation also costs a header of 8 bytes on Arm and
+/// 16 bytes elsewhere, plus whatever overhead the global allocator adds.
+#[cfg(feature = "heap-stats")]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct HeapStats {
+    /// Bytes allocated now
+    pub current: usize,
+    /// Most bytes allocated at once since start, or since [`reset_sdk_heap_peak`]
+    pub peak: usize,
+    /// Allocations alive now
+    pub allocations: usize,
+}
+
+#[cfg(feature = "heap-stats")]
+static HEAP_STATS: embassy_sync::blocking_mutex::Mutex<
+    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+    core::cell::Cell<HeapStats>,
+> = embassy_sync::blocking_mutex::Mutex::new(core::cell::Cell::new(HeapStats {
+    current: 0,
+    peak: 0,
+    allocations: 0,
+}));
+
+/// Returns the memory the SDK has allocated through the HAL.
+#[cfg(feature = "heap-stats")]
+pub fn sdk_heap_stats() -> HeapStats {
+    HEAP_STATS.lock(core::cell::Cell::get)
+}
+
+/// Resets the peak to the memory allocated now, to measure the peak of a later phase.
+#[cfg(feature = "heap-stats")]
+pub fn reset_sdk_heap_peak() {
+    update_heap_stats(|stats| stats.peak = stats.current);
+}
+
+#[cfg(feature = "heap-stats")]
+fn update_heap_stats(f: impl FnOnce(&mut HeapStats)) {
+    HEAP_STATS.lock(|cell| {
+        let mut stats = cell.get();
+        f(&mut stats);
+        cell.set(stats);
+    });
+}
+
+/// Counts an SDK allocation of `size` bytes.
+#[cfg(feature = "heap-stats")]
+pub(crate) fn record_alloc(size: usize) {
+    update_heap_stats(|stats| {
+        stats.current += size;
+        stats.peak = stats.peak.max(stats.current);
+        stats.allocations += 1;
+    });
+}
+
+/// Counts the release of an SDK allocation of `size` bytes.
+#[cfg(feature = "heap-stats")]
+pub(crate) fn record_free(size: usize) {
+    update_heap_stats(|stats| {
+        debug_assert!(
+            stats.current >= size && stats.allocations > 0,
+            "SDK heap statistics freed more than was allocated"
+        );
+        stats.current = stats.current.saturating_sub(size);
+        stats.allocations = stats.allocations.saturating_sub(1);
+    });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Vectors computed with the formulas of exptool's `a121/model/memory.py`.
+
+    #[test]
+    fn small_frames_use_the_calibration_buffer() {
+        assert_eq!(calc_session_external_heap(160, 1, 1), 2560);
+        assert_eq!(calc_session_rss_heap(1), 1384);
     }
 
-    /// Calculates total number of points for distance detection
-    fn total_num_points(&self) -> usize {
-        let num_subsweeps = self.config.num_subsweep() as usize;
-        let total_points: usize = (0..num_subsweeps as u8)
-            .filter_map(|i| self.config.get_subsweep(i))
-            .map(|subsweep| subsweep.num_points(self.config) as usize)
-            .sum();
-        total_points
+    #[test]
+    fn large_frames_use_their_own_size() {
+        assert_eq!(calc_session_external_heap(1990, 1, 1), 8028);
+        assert_eq!(calc_session_total(1990, 1, 1), 8028 + 1384);
     }
 
-    /// Calculates external heap memory for distance detection
-    ///
-    /// This is a simplified calculation that provides a conservative estimate.
-    /// The actual implementation in the SDK considers measurement types,
-    /// threshold methods, and processor configurations.
-    pub fn external_heap(&self) -> usize {
-        let session_calc = SessionMemoryCalculator::new(self.config);
-        let session_ext = session_calc.external_heap();
-
-        // Conservative estimate for distance processing buffers
-        // Includes work buffers, calibration buffers, and noise buffers
-        let num_points = self.total_num_points();
-        let sweeps_per_frame = self.config.sweeps_per_frame() as usize;
-
-        // Work buffer for filtering (with padding)
-        let work_buffer = (num_points + 2 * FILTFILT_PAD_LEN) * 2 * SIZE_OF_FLOAT;
-
-        // Calibration buffers (conservative estimate)
-        // In practice this depends on threshold method
-        let calib_buffer = num_points * SIZE_OF_FLOAT * 3;
-
-        // Additional buffer for close range if using multiple sweeps
-        let close_range_buffer = if sweeps_per_frame > 1 {
-            sweeps_per_frame * num_points * SIZE_OF_FLOAT
-        } else {
-            0
-        };
-
-        session_ext + work_buffer + calib_buffer + close_range_buffer
-    }
-
-    /// Calculates RSS heap memory for distance detection
-    pub fn rss_heap(&self) -> usize {
-        let session_calc = SessionMemoryCalculator::new(self.config);
-        let sweep_rss = session_calc.rss_heap();
-
-        // Conservative estimate: assume 2 processors
-        let processor_heap = DISTANCE_HEAP_PER_PROCESSOR * 2;
-
-        DISTANCE_HEAP_OVERHEAD + processor_heap + sweep_rss
-    }
-
-    /// Calculates total memory requirements for distance detection
-    pub fn memory_requirements(&self) -> MemoryRequirements {
-        MemoryRequirements::new(self.external_heap(), self.rss_heap())
-    }
-
-    /// Returns the buffer size needed for distance detection operations
-    ///
-    /// This is the size you should allocate for the buffer passed to
-    /// `calibrate_detector()` and processing methods.
-    pub fn buffer_size(&self) -> usize {
-        // Conservative estimate for main processing buffer
-        self.external_heap()
-    }
-
-    /// Returns the static calibration result buffer size
-    ///
-    /// This is the size you should allocate for the static calibration buffer.
-    pub fn static_calibration_size(&self) -> usize {
-        let num_points = self.total_num_points();
-        (num_points * SIZE_OF_FLOAT * 2).max(DISTANCE_MIN_STATIC_CAL_SIZE)
+    #[test]
+    fn subsweeps_add_rss_heap() {
+        // 3 subsweeps of 5, 20 and 10 points, 16 sweeps per frame: 560 points
+        assert_eq!(external_heap_for_points((5 + 20 + 10) * 16), 2560);
+        assert_eq!(calc_session_rss_heap(3), 1856);
+        assert_eq!(
+            memory_for_session!(num_points: 100, num_subsweeps: 2, sweeps_per_frame: 16),
+            100 * 2 * 16 * 4 + 68 + 512 + 2 * 236 + 636
+        );
     }
 }

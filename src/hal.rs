@@ -299,6 +299,8 @@ unsafe extern "C" fn mem_alloc(size: usize) -> *mut c_void {
 
     // Store the size at the beginning
     *(ptr as *mut usize) = size;
+    #[cfg(feature = "heap-stats")]
+    crate::memory::record_alloc(size);
 
     // Return pointer after the size metadata
     ptr.add(ALLOC_HEADER) as *mut c_void
@@ -320,6 +322,8 @@ unsafe extern "C" fn mem_free(ptr: *mut c_void) {
     // Retrieve the size stored before the user data
     let base = (ptr as *mut u8).sub(ALLOC_HEADER);
     let size = *(base as *mut usize);
+    #[cfg(feature = "heap-stats")]
+    crate::memory::record_free(size);
 
     let total = size + ALLOC_HEADER;
     let layout = Layout::from_size_align_unchecked(total, ALLOC_HEADER);
@@ -529,5 +533,32 @@ pub(crate) mod tests {
         // The flag does not leak into the next call
         assert_eq!(spi_checked(1002, || 2), Ok(2));
         assert_eq!(spi_checked(1003, || transfer(1003)), Ok(()));
+    }
+
+    #[cfg(feature = "heap-stats")]
+    #[test]
+    fn sdk_allocations_are_counted() {
+        use crate::memory::{reset_sdk_heap_peak, sdk_heap_stats};
+        // Only this test allocates through the HAL, but compare differences to be safe.
+        reset_sdk_heap_peak();
+        let before = sdk_heap_stats();
+        let a = unsafe { mem_alloc(100) };
+        let b = unsafe { mem_alloc(50) };
+        assert!(!a.is_null() && !b.is_null());
+        let during = sdk_heap_stats();
+        assert_eq!(during.current, before.current + 150);
+        assert_eq!(during.allocations, before.allocations + 2);
+        assert!(during.peak >= during.current);
+        unsafe {
+            mem_free(a);
+            mem_free(b);
+        }
+        let after = sdk_heap_stats();
+        assert_eq!(after.current, before.current);
+        assert_eq!(after.allocations, before.allocations);
+        assert!(after.peak >= before.current + 150);
+        reset_sdk_heap_peak();
+        let reset = sdk_heap_stats();
+        assert_eq!(reset.peak, reset.current);
     }
 }
