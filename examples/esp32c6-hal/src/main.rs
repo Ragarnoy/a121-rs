@@ -1,63 +1,50 @@
 #![no_std]
 #![no_main]
-#![feature(type_alias_impl_trait)]
 
-extern crate alloc;
-extern crate tinyrlibc;
-
-
-use core::mem::MaybeUninit;
-use embassy_executor::Spawner;
-use embassy_time::{Delay, Instant};
-use embedded_hal_bus::spi::ExclusiveDevice;
-use esp_backtrace as _;
-use esp_hal::{
-    clock::ClockControl,
-    embassy::{self},
-    gpio::{self, IO},
-    peripherals::Peripherals,
-    prelude::*,
-    spi::{master::Spi, SpiMode},
-    timer::TimerGroup,
-};
-mod mulsc3;
 use a121_rs::config::profile::RadarProfile::AccProfile5;
 use a121_rs::detector::distance::{config::*, RadarDistanceDetector};
 use a121_rs::radar::Radar;
 use a121_rs::AlignedBuffer;
+use embassy_executor::Spawner;
+use embassy_time::{Delay, Duration, Instant};
+use embedded_hal_bus::spi::{ExclusiveDevice, NoDelay};
+use esp_backtrace as _;
+use esp_hal::{
+    clock::CpuClock,
+    gpio::{Input, InputConfig, Level, Output, OutputConfig, Pull},
+    spi::{
+        master::{Config as SpiConfig, Spi},
+        Mode,
+    },
+    time::Rate,
+    timer::timg::TimerGroup,
+    Blocking,
+};
+use esp_println as _;
+use static_cell::StaticCell;
 
-// this provides malloc and free via the global allocator
+// The ESP-IDF second stage bootloader requires an application descriptor
+esp_bootloader_esp_idf::esp_app_desc!();
 
-#[global_allocator]
-static ALLOCATOR: esp_alloc::EspHeap = esp_alloc::EspHeap::empty();
+type SpiDevice = ExclusiveDevice<Spi<'static, Blocking>, Output<'static>, NoDelay>;
 
-fn init_heap() {
-    const HEAP_SIZE: usize = 32 * 1024;
-    static mut HEAP: MaybeUninit<[u8; HEAP_SIZE]> = MaybeUninit::uninit();
+// `Radar::new` keeps the SPI device for the lifetime of the program
+static SPI_DEVICE: StaticCell<SpiDevice> = StaticCell::new();
 
-    unsafe {
-        ALLOCATOR.init(HEAP.as_mut_ptr() as *mut u8, HEAP_SIZE);
-    }
-}
-
-#[main]
+#[esp_rtos::main]
 async fn main(_spawner: Spawner) {
-    init_heap();
-    let peripherals = Peripherals::take();
-    let system = peripherals.SYSTEM.split();
-    let io = IO::new(peripherals.GPIO, peripherals.IO_MUX);
+    let peripherals = esp_hal::init(esp_hal::Config::default().with_cpu_clock(CpuClock::max()));
 
-    let clocks = ClockControl::max(system.clock_control).freeze();
-    let timg0 = TimerGroup::new(peripherals.TIMG0, &clocks);
-    embassy::init(&clocks, timg0);
+    // The Acconeer SDK allocates its buffers through the global allocator
+    esp_alloc::heap_allocator!(size: 32 * 1024);
 
-    // setup logger
-    // To change the log_level change the env section in .cargo/config.toml
-    // or remove it and set ESP_LOGLEVEL manually before running cargo run
-    // this requires a clean rebuild because of https://github.com/rust-lang/cargo/issues/10358
-    esp_println::logger::init_logger_from_env();
+    let timg0 = TimerGroup::new(peripherals.TIMG0);
+    esp_rtos::start(timg0.timer0, peripherals.FROM_CPU_INTR0);
 
-    log::info!("A121 library version: {}", a121_rs::radar::version::rss_version());
+    defmt::info!(
+        "A121 library version: {}",
+        a121_rs::radar::version::rss_version()
+    );
 
     // XE121
     /*
@@ -73,36 +60,39 @@ async fn main(_spawner: Spawner) {
        #define GPIO_CS   22
     */
 
-    // this is only required for the XE121
-    let mut sel0 = io.pins.gpio4.into_push_pull_output();
-    let mut sel1 = io.pins.gpio3.into_push_pull_output();
-    let mut sel2 = io.pins.gpio2.into_push_pull_output();
-    sel0.set_low().unwrap();
-    sel1.set_low().unwrap();
-    sel2.set_low().unwrap();
+    // The sensor select pins are only required for the XE121, they must stay low
+    let _sel0 = Output::new(peripherals.GPIO4, Level::Low, OutputConfig::default());
+    let _sel1 = Output::new(peripherals.GPIO3, Level::Low, OutputConfig::default());
+    let _sel2 = Output::new(peripherals.GPIO2, Level::Low, OutputConfig::default());
 
-    let radar_en = io.pins.gpio0.into_push_pull_output();
-    let radar_int = io.pins.gpio23.into_pull_down_input();
+    let radar_en = Output::new(peripherals.GPIO0, Level::Low, OutputConfig::default());
+    let radar_int = Input::new(
+        peripherals.GPIO23,
+        InputConfig::default().with_pull(Pull::Down),
+    );
 
-    let sclk = io.pins.gpio19;
-    let miso = io.pins.gpio20;
-    let mosi = io.pins.gpio21;
-    let cs = io.pins.gpio22;
-
-    let spi_bus = Spi::new(peripherals.SPI2, 1u32.MHz(), SpiMode::Mode0, &clocks);
-    let spi_bus = spi_bus.with_pins(Some(sclk), Some(mosi), Some(miso), gpio::NO_PIN);
-    let spi_device = ExclusiveDevice::new_no_delay(spi_bus, cs.into_push_pull_output());
-    let spi_device = static_cell::make_static!(spi_device);
+    let spi_bus = Spi::new(
+        peripherals.SPI2,
+        SpiConfig::default()
+            .with_frequency(Rate::from_mhz(1))
+            .with_mode(Mode::_0),
+    )
+    .unwrap()
+    .with_sck(peripherals.GPIO19)
+    .with_miso(peripherals.GPIO20)
+    .with_mosi(peripherals.GPIO21);
+    let cs = Output::new(peripherals.GPIO22, Level::High, OutputConfig::default());
+    let spi_device = SPI_DEVICE.init(ExclusiveDevice::new_no_delay(spi_bus, cs).unwrap());
 
     let mut radar = Radar::new(1, spi_device, radar_int, radar_en, Delay)
         .await
         .unwrap();
 
-    log::info!("Radar enabled.");
-    log::info!("Starting calibration...");
+    defmt::info!("Radar enabled.");
+    defmt::info!("Starting calibration...");
     let mut calibration = radar.calibrate().await.unwrap();
     radar.prepare_sensor(&mut calibration).unwrap();
-    log::info!("Radar calibrated and prepared.");
+    defmt::info!("Radar calibrated and prepared.");
 
     let mut distance_config = RadarDistanceConfig::balanced().unwrap();
     distance_config.set_interval(0.2..=3.0);
@@ -116,10 +106,11 @@ async fn main(_spawner: Spawner) {
     distance_config.set_close_range_leakage_cancelation(false);
 
     let mut distance = RadarDistanceDetector::with_config(&mut radar, distance_config).unwrap();
-    let mut buffer = AlignedBuffer::new(distance.get_distance_buffer_size().unwrap());
-    let mut static_cal_result =
-        AlignedBuffer::new(distance.get_static_result_buffer_size().unwrap());
-    log::info!("Starting detector calibration...");
+    // Buffer sizes depend on the detector configuration, so ask the SDK
+    let sizes = distance.memory_requirements().unwrap();
+    let mut buffer = AlignedBuffer::new(sizes.buffer);
+    let mut static_cal_result = AlignedBuffer::new(sizes.static_calibration);
+    defmt::info!("Starting detector calibration...");
     let mut dynamic_cal_result = distance
         .calibrate_detector(&calibration, &mut buffer, &mut static_cal_result)
         .await
@@ -142,14 +133,14 @@ async fn main(_spawner: Spawner) {
                 if res.num_distances() > 0 {
                     measurements += 1;
                     distances += res.num_distances();
-                    log::info!(
+                    defmt::info!(
                         "{} Distances found:\n{:?}",
                         res.num_distances(),
                         res.distances()
                     );
                 }
                 if res.calibration_needed() {
-                    log::info!("Calibration needed.");
+                    defmt::info!("Calibration needed.");
                     calibration = distance.calibrate().await.unwrap();
                     dynamic_cal_result = distance
                         .update_calibration(&calibration, &mut buffer)
@@ -157,13 +148,15 @@ async fn main(_spawner: Spawner) {
                         .unwrap();
                 }
             }
-            Err(_) => log::error!("Failed to process data."),
+            Err(_) => defmt::error!("Failed to process data."),
         }
 
-        if Instant::now() - last_print >= embassy_time::Duration::from_secs(1) {
-            log::info!(
+        if Instant::now() - last_print >= Duration::from_secs(1) {
+            defmt::info!(
                 "[Measurement frames]:[Frames with at least 1 distance]:[Total distances] per second: \n {}:{}:{}",
-                frames, measurements, distances
+                frames,
+                measurements,
+                distances
             );
             frames = 0;
             measurements = 0;

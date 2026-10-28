@@ -3,23 +3,30 @@
 
 extern crate alloc;
 
-use core::cell::RefCell;
-
 use defmt::*;
 use embassy_executor::Spawner;
-use embassy_stm32::exti::ExtiInput;
+use embassy_stm32::exti::{self, ExtiInput};
 use embassy_stm32::gpio::{Level, Output, Pull, Speed};
 use embassy_stm32::spi::Spi;
+use embassy_stm32::{bind_interrupts, dma, interrupt, peripherals};
 use embassy_time::{Delay, Instant};
 use embedded_hal_bus::spi::ExclusiveDevice;
+use static_cell::StaticCell;
 
 use a121_rs::detector::distance::config::RadarDistanceConfig;
 use a121_rs::detector::distance::RadarDistanceDetector;
+use a121_rs::memory::sdk_heap_stats;
 use a121_rs::radar::version::rss_version;
 use a121_rs::radar::Radar;
 use a121_rs::AlignedBuffer;
 use xe125_nightly::*;
 use {defmt_rtt as _, panic_probe as _};
+
+bind_interrupts!(struct Irqs {
+    EXTI3 => exti::InterruptHandler<interrupt::typelevel::EXTI3>;
+    DMA2_CHANNEL3 => dma::InterruptHandler<peripherals::DMA2_CH3>;
+    DMA2_CHANNEL4 => dma::InterruptHandler<peripherals::DMA2_CH4>;
+});
 
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
@@ -27,7 +34,7 @@ async fn main(_spawner: Spawner) {
 
     let enable = Output::new(p.PB12, Level::Low, Speed::VeryHigh); // ENABLE on PB12
     let cs_pin = Output::new(p.PB0, Level::High, Speed::VeryHigh);
-    let interrupt = ExtiInput::new(p.PB3, p.EXTI3, Pull::Up); // INTERRUPT on PB3 used as 'ready' signal
+    let interrupt = ExtiInput::new(p.PB3, p.EXTI3, Pull::Up, Irqs); // INTERRUPT on PB3 used as 'ready' signal
     info!("GPIO initialized.");
 
     let spi = Spi::new(
@@ -37,23 +44,16 @@ async fn main(_spawner: Spawner) {
         p.PA6,      // MISO
         p.DMA2_CH4, // TX DMA for SPI1
         p.DMA2_CH3, // RX DMA for SPI1
+        Irqs,
         xm125_spi_config(),
     );
-    let exclusive_device = ExclusiveDevice::new(spi, cs_pin, Delay);
-
-    unsafe {
-        SPI_DEVICE = Some(RefCell::new(
-            exclusive_device.expect("SPI device init failed!"),
-        ))
-    };
-    let spi_mut_ref = unsafe {
-        let spi_ptr = core::ptr::addr_of_mut!(SPI_DEVICE);
-        (*spi_ptr).as_mut().unwrap()
-    };
+    static SPI_DEVICE: StaticCell<RadarSpi> = StaticCell::new();
+    let spi_device =
+        SPI_DEVICE.init(ExclusiveDevice::new(spi, cs_pin, Delay).expect("SPI device init failed!"));
 
     debug!("RSS Version: {}", rss_version());
 
-    let mut radar = Radar::new(1, spi_mut_ref.get_mut(), interrupt, enable, Delay)
+    let mut radar = Radar::new(1, spi_device, interrupt, enable, Delay)
         .await
         .unwrap();
     info!("Radar enabled.");
@@ -92,14 +92,17 @@ async fn main(_spawner: Spawner) {
     let mut dist_config = RadarDistanceConfig::balanced().unwrap();
     dist_config.set_interval(0.7..=1.5);
     let mut distance = RadarDistanceDetector::with_config(&mut radar, dist_config).unwrap();
-    let mut buffer = AlignedBuffer::new(distance.get_distance_buffer_size().unwrap());
-    let mut static_cal_result =
-        AlignedBuffer::new(distance.get_static_result_buffer_size().unwrap());
+    // Buffer sizes depend on the detector configuration, so ask the SDK
+    let sizes = distance.memory_requirements().unwrap();
+    let mut buffer = AlignedBuffer::new(sizes.buffer);
+    let mut static_cal_result = AlignedBuffer::new(sizes.static_calibration);
     trace!("Calibrating detector...");
     let mut dynamic_cal_result = distance
         .calibrate_detector(&calibration, &mut buffer, &mut static_cal_result)
         .await
         .unwrap();
+    info!("SDK heap after detector calibration: {}", sdk_heap_stats());
+    let mut heap_logged = false;
 
     let mut counter = 0;
     let mut counter_d = 0;
@@ -114,6 +117,11 @@ async fn main(_spawner: Spawner) {
 
         match distance.process_data(&mut buffer, &mut static_cal_result, &mut dynamic_cal_result) {
             Ok(res) => {
+                if !heap_logged {
+                    // The peak covers sensor and detector calibration and the first frame
+                    info!("SDK heap after the first frame: {}", sdk_heap_stats());
+                    heap_logged = true;
+                }
                 counter += 1;
                 if res.num_distances() > 0 {
                     counter_d += 1;

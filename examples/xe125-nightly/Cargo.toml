@@ -8,23 +8,24 @@ bench = false
 test = false
 
 [dependencies]
-a121-rs = { path = "../..", features = ["distance", "logger"] }
+a121-rs = { path = "../..", features = ["distance", "logger", "heap-stats"] }
 
 cortex-m = { version = "0.7", features = ["critical-section-single-core", "inline-asm"] }
 cortex-m-rt = "0.7"
 
-defmt = "1.0.1"
-defmt-rtt = "1.1.0"
+defmt = "1.1"
+defmt-rtt = "1.2"
 panic-probe = { version = "1.0.0", features = ["print-defmt"] }
 
 embedded-hal = "1.0.0"
-embassy-executor = { version = "0.9", features = ["arch-cortex-m", "executor-thread", "defmt"] }
-embassy-time = { version = "0.5", features = ["defmt"] }
-embassy-stm32 = { version = "0.4", features = ["defmt", "stm32l431cb", "memory-x", "time-driver-any", "exti", "chrono"] }
+embassy-executor = { version = "0.10", features = ["platform-cortex-m", "executor-thread", "defmt"] }
+embassy-time = { version = "0.5.1", features = ["defmt"] }
+embassy-stm32 = { version = "0.6", features = ["defmt", "stm32l431cb", "memory-x", "time-driver-any", "exti", "chrono"] }
 embedded-hal-bus = { version = "0.3.0"}
 
-talc = "4.4"
-spin = "0.10.0"
+talc = "5.1"
+spin = "0.12"
+static_cell = "2.1"
 
 [profile.dev]
 lto = true

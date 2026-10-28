@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     name: ubuntu / nightly
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           submodules: true
       - name: Install nightly
@@ -41,7 +41,7 @@ jobs:
     name: ubuntu / beta / updated
     # No Cargo.lock is checked in, so this resolves the latest compatible dependencies on beta.
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           submodules: true
       - name: Install beta

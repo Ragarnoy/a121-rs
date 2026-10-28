@@ -1,0 +1,49 @@
+# Checks that the examples build and link against the a121-sys stub libraries. The Acconeer
+# libraries are not public. See check.yml for how concurrency cancellation
+# and workflow triggering work.
+permissions:
+  contents: read
+on:
+  push:
+    branches: [main]
+  pull_request:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+name: examples
+jobs:
+  stm32:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    name: ${{ matrix.example }}
+    strategy:
+      fail-fast: false
+      matrix:
+        example: [xe125-nightly, xe121_l433rc]
+    defaults:
+      run:
+        working-directory: examples/${{ matrix.example }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: true
+      - name: Install system build deps
+        timeout-minutes: 10
+        run: |
+          # Skip rebuilding the man page index, which makes installs slow on the runners.
+          # A short timeout retries stalled mirror downloads instead of waiting on them.
+          sudo rm -f /var/lib/man-db/auto-update
+          sudo apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=20 update
+          sudo apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=20 install -y --no-install-recommends gcc-arm-none-eabi libnewlib-arm-none-eabi clang
+      - name: Install the example's toolchain
+        # rustup installs the toolchain named in the example's rust-toolchain.toml
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: examples/${{ matrix.example }}
+      - name: cargo clippy
+        run: cargo clippy --features a121-rs/stub_library -- -D warnings
+      - name: cargo build
+        # Links against the stubs, which catches missing linker setup but not symbols that only the
+        # real SDK needs
+        run: cargo build --release --features a121-rs/stub_library

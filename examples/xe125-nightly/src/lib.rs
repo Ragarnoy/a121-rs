@@ -2,9 +2,7 @@
 
 extern crate alloc;
 
-use core::cell::RefCell;
 use core::ffi::c_void;
-use core::ptr::addr_of_mut;
 use embassy_stm32::gpio::Output;
 use embassy_stm32::mode::Async;
 use embassy_stm32::rcc::{
@@ -14,21 +12,20 @@ use embassy_stm32::spi::{Config, Spi};
 use embassy_stm32::time::Hertz;
 use embassy_time::Delay;
 use embedded_hal_bus::spi::ExclusiveDevice;
-use talc::{ClaimOnOom, Span, Talc, Talck};
+use talc::source::Claim;
+use talc::TalcLock;
 
-// Heap for dynamic allocation - increased size for C library usage
-const HEAP_SIZE: usize = 32 * 1024; // 32KB heap (more space for C library)
-static mut HEAP: [u8; HEAP_SIZE] = [0; HEAP_SIZE];
+// Heap for the SDK, which allocates through the global allocator
+const HEAP_SIZE: usize = 32 * 1024;
 
 #[global_allocator]
-pub static ALLOCATOR: Talck<spin::Mutex<()>, ClaimOnOom> = Talc::new(unsafe {
-    // Initialize with the heap memory using proper slice conversion
-    ClaimOnOom::new(Span::from_array(addr_of_mut!(HEAP)))
-})
-.lock();
+pub static ALLOCATOR: TalcLock<spin::Mutex<()>, Claim> = TalcLock::new(unsafe {
+    static mut HEAP: [u8; HEAP_SIZE] = [0; HEAP_SIZE];
+    Claim::array(&raw mut HEAP)
+});
 
-pub type SpiDeviceMutex = ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>;
-pub static mut SPI_DEVICE: Option<RefCell<SpiDeviceMutex>> = None;
+pub type RadarSpi =
+    ExclusiveDevice<Spi<'static, Async, embassy_stm32::spi::mode::Master>, Output<'static>, Delay>;
 
 pub fn xm125_spi_config() -> Config {
     let mut spi_config = Config::default();
@@ -63,6 +60,7 @@ pub fn xm125_clock_config() -> embassy_stm32::Config {
 }
 
 // C allocator shims - required for C SDK code that calls malloc directly.
+// `heap-stats` only counts allocations made through the a121-rs HAL, not these.
 // Note: a121-rs itself uses Rust's GlobalAlloc (above), but the underlying
 // C SDK may still call malloc/free/calloc/realloc in its internal code.
 
