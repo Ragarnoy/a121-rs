@@ -16,6 +16,9 @@ use crate::sensor::error::SensorError;
 /// Smallest buffer [`Radar::assembly_test`] accepts.
 pub const ASSEMBLY_TEST_MIN_BUFFER_SIZE: usize = ACC_RSS_ASSEMBLY_TEST_MIN_BUFFER_SIZE as usize;
 
+/// How long the test waits for the interrupt pin before reporting a timeout to the SDK.
+const INTERRUPT_TIMEOUT_MS: u32 = 1000;
+
 /// One of the checks of the assembly test.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -87,9 +90,9 @@ impl AssemblyTestReport {
         &self.outcomes[..self.len]
     }
 
-    /// Whether every test that ran passed.
+    /// Whether tests ran and every one of them passed.
     pub fn passed(&self) -> bool {
-        self.outcomes().iter().all(|outcome| outcome.passed)
+        !self.outcomes().is_empty() && self.outcomes().iter().all(|outcome| outcome.passed)
     }
 }
 
@@ -122,8 +125,8 @@ where
     ///
     /// The sensor is power-cycled before and after the test, so the radar is enabled and
     /// unprepared afterwards, as after [`Radar::reset_sensor`]: calibrate it again before
-    /// measuring. The interrupt pin has no timeout, so a sensor whose interrupt never rises keeps
-    /// the test waiting; an error from the pin is reported to the test as a timeout.
+    /// measuring. When the interrupt pin does not rise within a second, or reports an error, the
+    /// test is told the wait timed out, which fails the tests that need the interrupt.
     ///
     /// # Errors
     ///
@@ -183,7 +186,11 @@ where
                     self.fault_on_error(toggled)?;
                 }
                 acc_rss_test_state_t_ACC_RSS_TEST_STATE_WAIT_FOR_INTERRUPT => {
-                    if self.interrupt.wait_for_high().await.is_err() {
+                    let interrupted = self
+                        .sensor
+                        .wait_for_interrupt(&mut self.interrupt, INTERRUPT_TIMEOUT_MS)
+                        .await;
+                    if !interrupted {
                         status =
                             acc_rss_test_integration_status_t_ACC_RSS_TEST_INTEGRATION_STATUS_TIMEOUT;
                     }
@@ -217,6 +224,10 @@ fn report(instance: &Instance) -> AssemblyTestReport {
     if results.is_null() {
         return report;
     }
+    debug_assert!(
+        count as usize <= report.outcomes.len(),
+        "the SDK returned {count} assembly test results"
+    );
     report.len = (count as usize).min(report.outcomes.len());
     // SAFETY: the SDK returns `count` results, which live as long as the instance
     let results = unsafe { core::slice::from_raw_parts(results, report.len) };

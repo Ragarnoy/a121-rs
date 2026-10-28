@@ -80,18 +80,17 @@ impl Processing {
     }
 
     /// Processes the frame read into `buffer`, and returns the result with the frame, which the
-    /// SDK leaves in `buffer`.
+    /// SDK leaves in `buffer`. The frame is only checked by [`frame`](Self::frame).
     ///
     /// # Errors
     ///
     /// Returns [`SensorError::BufferTooSmall`] when `buffer` is shorter than the configuration's
     /// buffer size, and [`SensorError::BufferMisaligned`] when it is not aligned for any built-in
-    /// type. Returns [`SensorError::ProcessingFailed`] if the SDK places the frame outside
-    /// `buffer`.
-    pub(crate) fn execute<'buf>(
+    /// type.
+    pub(crate) fn execute(
         &mut self,
-        buffer: &'buf mut [u8],
-    ) -> Result<(ProcessingResult, &'buf [AccComplex]), SensorError> {
+        buffer: &mut [u8],
+    ) -> Result<(ProcessingResult, *const acc_int16_complex_t), SensorError> {
         use core::mem::MaybeUninit;
 
         check_buffer(buffer, self.buffer_size)?;
@@ -105,8 +104,20 @@ impl Processing {
             );
             ffi_result.assume_init()
         };
-        let frame = frame_in(buffer, ffi_result.frame, self.metadata.frame_data_length())?;
-        Ok((ProcessingResult::from(ffi_result), frame))
+        Ok((ProcessingResult::from(ffi_result), ffi_result.frame))
+    }
+
+    /// Returns the frame at `frame`, as [`execute`](Self::execute) returned it for `buffer`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SensorError::ProcessingFailed`] if the frame does not lie in `buffer`.
+    pub(crate) fn frame<'buf>(
+        &self,
+        buffer: &'buf [u8],
+        frame: *const acc_int16_complex_t,
+    ) -> Result<&'buf [AccComplex], SensorError> {
+        frame_in(buffer, frame, self.metadata.frame_data_length())
     }
 }
 

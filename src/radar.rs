@@ -379,7 +379,9 @@ where
     /// than [`Processing::buffer_size`], and [`SensorError::BufferMisaligned`] when it is not
     /// aligned for any built-in type.
     pub fn process(&mut self, data: &mut [u8]) -> Result<ProcessingResult, SensorError> {
-        self.process_frame(data).map(|(result, _)| result)
+        self.processing_mut()?
+            .execute(data)
+            .map(|(result, _)| result)
     }
 
     /// Processes a frame read by [`Radar::measure`], and returns the result with the frame's
@@ -388,16 +390,24 @@ where
     ///
     /// # Errors
     ///
-    /// As [`Radar::process`].
+    /// As [`Radar::process`], and [`SensorError::ProcessingFailed`] if the SDK placed the frame
+    /// outside `data`.
     pub fn process_frame<'data>(
         &mut self,
         data: &'data mut [u8],
     ) -> Result<(ProcessingResult, &'data [AccComplex]), SensorError> {
+        let processing = self.processing_mut()?;
+        let (result, frame) = processing.execute(data)?;
+        Ok((result, processing.frame(data, frame)?))
+    }
+
+    /// The processing for the prepared configuration, while the radar is ready.
+    fn processing_mut(&mut self) -> Result<&mut Processing, SensorError> {
         if self.state != RadarState::Ready {
             return Err(SensorError::NotReady);
         }
         match &mut self.prepared {
-            Prepared::Radar(processing) => processing.execute(data),
+            Prepared::Radar(processing) => Ok(processing),
             _ => Err(SensorError::NotReady),
         }
     }

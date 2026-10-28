@@ -185,7 +185,7 @@ impl MemoryRequirements {
 }
 
 /// Sum of the points of all subsweeps in `config`, for one sweep.
-pub(crate) fn total_points(config: &RadarConfig) -> usize {
+fn total_points(config: &RadarConfig) -> usize {
     (0..config.num_subsweep())
         .filter_map(|index| config.get_subsweep(index))
         .map(|subsweep| subsweep.num_points(config) as usize)

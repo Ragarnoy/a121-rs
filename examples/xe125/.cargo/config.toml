@@ -12,9 +12,10 @@ rustflags = [
     "-C", "link-arg=-mfloat-abi=hard",
     "-C", "link-arg=-mfpu=fpv4-sp-d16",
     "-L", "/usr/lib/arm-none-eabi/newlib/thumb/v7e-m+fp/hard",
+    # libm again after the SDK libraries, which need cexpf; build.rs also links it ahead of
+    # compiler_builtins, for newlib's smaller sinf/cosf/tanf
     "-C", "link-arg=-lm",
     "-C", "link-arg=-lc",
-    # build.rs also links libm ahead of compiler_builtins, for newlib's smaller sinf/cosf/tanf
 ]
 
 [build]

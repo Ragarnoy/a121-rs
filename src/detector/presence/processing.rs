@@ -13,8 +13,8 @@ use core::ptr::NonNull;
 use a121_sys::*;
 
 use crate::config::RadarConfig;
-use crate::memory::total_points;
 use crate::num::AccComplex;
+use crate::processing::Processing;
 use crate::radar::check_buffer;
 use crate::sensor::error::SensorError;
 
@@ -298,7 +298,11 @@ impl PresenceProcessing {
         let inner = NonNull::new(ptr).ok_or(SensorError::InitFailed)?;
         let buffer_size =
             unsafe { acc_detector_presence_processing_get_buffer_size(sensor_config.ptr()) };
-        let frame_len = total_points(sensor_config) * sensor_config.sweeps_per_frame() as usize;
+        // The SDK's processing reports the frame length for the configuration
+        let frame_len = Processing::new(sensor_config)
+            .map_err(|_| SensorError::InitFailed)?
+            .metadata()
+            .frame_data_length();
         Ok(Self {
             inner,
             buffer_size: buffer_size as usize,
@@ -326,24 +330,24 @@ impl PresenceProcessing {
 
     /// Looks for presence in `frame`, using `buffer` as working memory.
     ///
-    /// `frame` is a frame of the configuration the processing was created for, as returned by
-    /// [`Radar::process_frame`](crate::radar::Radar::process_frame).
+    /// `frame` is a whole frame of the configuration the processing was created for, as returned
+    /// by [`Radar::process_frame`](crate::radar::Radar::process_frame).
     ///
     /// # Errors
     ///
     /// Returns [`SensorError::BufferTooSmall`] if `buffer` is shorter than
-    /// [`buffer_size`](Self::buffer_size) or `frame` is shorter than a frame, and
-    /// [`SensorError::BufferMisaligned`] if `buffer` is not aligned for any built-in type; see
-    /// [`AlignedBuffer`](crate::AlignedBuffer). Returns [`SensorError::ProcessingFailed`] if the
-    /// SDK could not process the frame.
+    /// [`buffer_size`](Self::buffer_size), and [`SensorError::BufferMisaligned`] if it is not
+    /// aligned for any built-in type; see [`AlignedBuffer`](crate::AlignedBuffer). Returns
+    /// [`SensorError::ProcessingFailed`] if `frame` is not the length of a frame of the
+    /// configuration, or the SDK could not process it.
     pub fn process<'a>(
         &'a mut self,
         buffer: &'a mut [u8],
         frame: &[AccComplex],
     ) -> Result<PresenceProcessingResult<'a>, SensorError> {
         check_buffer(buffer, self.buffer_size)?;
-        if frame.len() < self.frame_len {
-            return Err(SensorError::BufferTooSmall);
+        if frame.len() != self.frame_len {
+            return Err(SensorError::ProcessingFailed);
         }
         let mut result =
             core::mem::MaybeUninit::<acc_detector_presence_processing_result_t>::zeroed();
