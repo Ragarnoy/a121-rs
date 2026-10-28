@@ -158,4 +158,22 @@ impl Subsweep {
     pub fn is_loopback_enabled(&self, config: &RadarConfig) -> bool {
         unsafe { acc_config_subsweep_enable_loopback_get(config.inner.as_ptr(), self.index) }
     }
+
+    /// Set the IQ imbalance compensation enabled configuration
+    pub fn set_iq_imbalance_compensation_enabled(&self, config: &mut RadarConfig, enable: bool) {
+        unsafe {
+            acc_config_subsweep_iq_imbalance_compensation_set(
+                config.inner.as_ptr(),
+                enable,
+                self.index,
+            )
+        };
+    }
+
+    /// Get the IQ imbalance compensation enabled configuration
+    pub fn is_iq_imbalance_compensation_enabled(&self, config: &RadarConfig) -> bool {
+        unsafe {
+            acc_config_subsweep_iq_imbalance_compensation_get(config.inner.as_ptr(), self.index)
+        }
+    }
 }

@@ -298,6 +298,21 @@ impl RadarConfig {
         unsafe { acc_config_phase_enhancement_get(self.inner.as_ptr()) }
     }
 
+    /// Enable or disable IQ imbalance compensation for every subsweep
+    pub fn set_iq_imbalance_compensation(&mut self, enable: bool) {
+        unsafe { acc_config_iq_imbalance_compensation_set(self.inner.as_ptr(), enable) };
+    }
+
+    /// Check if IQ imbalance compensation is enabled
+    pub fn is_iq_imbalance_compensation_enabled(&self) -> bool {
+        unsafe { acc_config_iq_imbalance_compensation_get(self.inner.as_ptr()) }
+    }
+
+    /// Prints the configuration through the SDK logger
+    pub fn log(&self) {
+        unsafe { acc_config_log(self.inner.as_ptr()) }
+    }
+
     /// Enable or disable loopback
     ///
     /// Loopback can't be enabled together with profile 2.

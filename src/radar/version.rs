@@ -1,4 +1,5 @@
-use a121_sys::acc_version_get_hex;
+use a121_sys::{acc_version_get, acc_version_get_hex};
+use core::ffi::CStr;
 use core::fmt::Display;
 
 /// Radar Sensor Software Version
@@ -42,4 +43,15 @@ impl RssVersion {
 pub fn rss_version() -> RssVersion {
     let version = unsafe { acc_version_get_hex() };
     RssVersion::new(version)
+}
+
+/// Get the RSS version string, such as `"a121-v1.13.0"`, or an empty string if the SDK does not
+/// report one.
+pub fn rss_version_str() -> &'static str {
+    let ptr = unsafe { acc_version_get() };
+    if ptr.is_null() {
+        return "";
+    }
+    // SAFETY: the SDK returns a NUL-terminated string literal, which lives as long as the program
+    unsafe { CStr::from_ptr(ptr) }.to_str().unwrap_or("")
 }

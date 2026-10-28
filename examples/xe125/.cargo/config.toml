@@ -14,9 +14,7 @@ rustflags = [
     "-L", "/usr/lib/arm-none-eabi/newlib/thumb/v7e-m+fp/hard",
     "-C", "link-arg=-lm",
     "-C", "link-arg=-lc",
-    # Link newlib's sinf/cosf/tanf ahead of compiler_builtins. The compiler_builtins versions pull in
-    # __rem_pio2_large and soft-float double arithmetic (~10 KB), which the SDK does not otherwise need.
-    "-Z", "pre-link-args=-Wl,-u,sinf -Wl,-u,cosf -Wl,-u,tanf -L/usr/lib/arm-none-eabi/newlib/thumb/v7e-m+fp/hard -lm",
+    # build.rs also links libm ahead of compiler_builtins, for newlib's smaller sinf/cosf/tanf
 ]
 
 [build]

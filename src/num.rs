@@ -4,7 +4,9 @@ use a121_sys::{
     acc_int16_complex_t, acc_processing_meter_to_points, acc_processing_points_to_meter,
 };
 
+/// A complex sample of a frame, as the SDK stores it.
 #[derive(Debug, Clone)]
+#[repr(transparent)]
 pub struct AccComplex {
     inner: acc_int16_complex_t,
 }

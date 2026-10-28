@@ -77,16 +77,16 @@ distances found. Build from the example's directory with `ACC_RSS_LIBS` pointing
 libraries for that target:
 
 ```sh
-cd examples/xe125-nightly
+cd examples/xe125
 ACC_RSS_LIBS=/path/to/a121-v1.13.0/lib cargo build --release
 cargo run --release   # flashes with probe-rs
 ```
 
 | Example | Board | Target | Toolchain | a121-rs features | Status |
 |---|---|---|---|---|---|
-| `xe125-nightly` | XE125 (STM32L431CB) | `thumbv7em-none-eabihf` | nightly, `arm-none-eabi-gcc` and newlib | `distance, logger, heap-stats` | Links against SDK 1.13 |
+| `xe125` | XE125 (STM32L431CB) | `thumbv7em-none-eabihf` | stable, `arm-none-eabi-gcc` and newlib | `distance, logger, heap-stats` | Links against SDK 1.13 |
 | `xe121_l433rc` | XE121 on a NUCLEO-L433RC | `thumbv7em-none-eabihf` | stable, no C library | `distance, defmt, logger, libm, heap-stats` | Links against SDK 1.13 |
-| `esp32c6-hal` | ESP32-C6 with an XE121 | `riscv32imac-unknown-none-elf` | stable, RISC-V gcc with newlib headers | `distance, logger, libm` | Compile-checked only |
+| `esp32c6-hal` | ESP32-C6 with an XE121 | `riscv32imac-unknown-none-elf` | stable, RISC-V gcc with newlib headers | `distance, logger, libm` | Links against the stubs only |
 | `esp32s3-hal` | ESP32-S3 | `xtensa-esp32s3-none-elf` | `esp` 1.99 or newer (espup) | `distance, logger, libm` | Compile-checked only |
 
 The STM32 examples log the SDK heap use (`heap-stats`) after detector calibration and after the
@@ -94,8 +94,8 @@ first frame. Their 32 KB heap must hold that peak plus the detector buffers (`me
 and the allocator's overhead of a few bytes per allocation. CI checks the STM32 examples against the a121-sys stub libraries,
 since the Acconeer libraries are not public.
 
-- `xe125-nightly` links newlib with `arm-none-eabi-gcc` and needs nightly for `-Z pre-link-args`,
-  which keeps newlib's smaller `sinf`/`cosf`/`tanf`. Its `.cargo/config.toml` sets `CPATH` for the
+- `xe125` links newlib with `arm-none-eabi-gcc`. Its `build.rs` links newlib's `libm` ahead of
+  compiler_builtins, so the SDK gets newlib's smaller `sinf`/`cosf`/`tanf`. Its `.cargo/config.toml` sets `CPATH` for the
   newlib headers of Debian and Ubuntu's `libnewlib-arm-none-eabi`.
 - `xe121_l433rc` links with `rust-lld` and no C library: the `logger` and `libm` features provide
   what the SDK would otherwise take from newlib.

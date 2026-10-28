@@ -1,3 +1,5 @@
+mod assembly_test;
+mod log_level;
 pub mod version;
 
 use a121_sys::{acc_sensor_connected, acc_sensor_id_t, acc_sensor_t};
@@ -15,10 +17,16 @@ use core::ptr::NonNull;
 use crate::config::RadarConfig;
 pub use crate::hal::MAX_SENSORS;
 use crate::hal::{ensure_registered, register_spi, spi_checked, SpiRegistration, SDK_ALIGN};
+use crate::num::AccComplex;
 use crate::processing::{Processing, ProcessingResult};
 use crate::sensor::calibration::CalibrationResult;
 use crate::sensor::error::SensorError;
 use crate::sensor::{InnerSensor, Sensor};
+pub use assembly_test::{
+    enable_assembly_test_diagnostic_logs, AssemblyTest, AssemblyTestOutcome, AssemblyTestReport,
+    ASSEMBLY_TEST_MIN_BUFFER_SIZE,
+};
+pub use log_level::{set_sdk_log_level, LogLevel};
 
 /// Default scratch buffer size for radar operations (calibration and sensor preparation).
 ///
@@ -371,6 +379,20 @@ where
     /// than [`Processing::buffer_size`], and [`SensorError::BufferMisaligned`] when it is not
     /// aligned for any built-in type.
     pub fn process(&mut self, data: &mut [u8]) -> Result<ProcessingResult, SensorError> {
+        self.process_frame(data).map(|(result, _)| result)
+    }
+
+    /// Processes a frame read by [`Radar::measure`], and returns the result with the frame's
+    /// samples, which stay in `data`. The samples are laid out as described by the
+    /// [processing metadata](Processing::metadata).
+    ///
+    /// # Errors
+    ///
+    /// As [`Radar::process`].
+    pub fn process_frame<'data>(
+        &mut self,
+        data: &'data mut [u8],
+    ) -> Result<(ProcessingResult, &'data [AccComplex]), SensorError> {
         if self.state != RadarState::Ready {
             return Err(SensorError::NotReady);
         }

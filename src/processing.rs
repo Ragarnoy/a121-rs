@@ -4,21 +4,21 @@ use core::ptr::NonNull;
 use metadata::ProcessingMetaData;
 
 use crate::config::RadarConfig;
+use crate::num::AccComplex;
 use crate::radar::check_buffer;
 use crate::sensor::error::SensorError;
 use a121_sys::{
-    acc_processing_create, acc_processing_destroy, acc_processing_execute, acc_processing_result_t,
-    acc_processing_t,
+    acc_int16_complex_t, acc_processing_create, acc_processing_destroy, acc_processing_execute,
+    acc_processing_result_t, acc_processing_t,
 };
 
 pub mod metadata;
 
 /// Result from radar signal processing.
 ///
-/// Contains status flags and sensor temperature. The raw frame data is not
-/// included here as it points into the processing buffer and has complex
-/// lifetime requirements. For presence/distance detection, the detectors
-/// extract the meaningful information from the frame data.
+/// Contains status flags and sensor temperature. The frame itself lives in the processed
+/// buffer: [`Radar::process_frame`](crate::radar::Radar::process_frame) returns it with this
+/// result.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ProcessingResult {
     /// Indication of sensor data being saturated, can cause data corruption.
@@ -79,30 +79,61 @@ impl Processing {
         &self.metadata
     }
 
-    /// Execute processing on the buffer and return the result.
-    ///
-    /// Note: The raw frame data is written into `buffer` by the SDK.
-    /// This method only returns the status flags and temperature.
+    /// Processes the frame read into `buffer`, and returns the result with the frame, which the
+    /// SDK leaves in `buffer`.
     ///
     /// # Errors
     ///
     /// Returns [`SensorError::BufferTooSmall`] when `buffer` is shorter than the configuration's
     /// buffer size, and [`SensorError::BufferMisaligned`] when it is not aligned for any built-in
-    /// type.
-    pub(crate) fn execute(&mut self, buffer: &mut [u8]) -> Result<ProcessingResult, SensorError> {
+    /// type. Returns [`SensorError::ProcessingFailed`] if the SDK places the frame outside
+    /// `buffer`.
+    pub(crate) fn execute<'buf>(
+        &mut self,
+        buffer: &'buf mut [u8],
+    ) -> Result<(ProcessingResult, &'buf [AccComplex]), SensorError> {
         use core::mem::MaybeUninit;
 
         check_buffer(buffer, self.buffer_size)?;
-        let mut ffi_result = MaybeUninit::<acc_processing_result_t>::uninit();
-        unsafe {
+        // Zeroed, so the frame is NULL if the SDK does not set it
+        let mut ffi_result = MaybeUninit::<acc_processing_result_t>::zeroed();
+        let ffi_result = unsafe {
             acc_processing_execute(
                 self.inner.as_ptr(),
                 buffer.as_mut_ptr() as *mut c_void,
                 ffi_result.as_mut_ptr(),
             );
-            Ok(ProcessingResult::from(ffi_result.assume_init()))
-        }
+            ffi_result.assume_init()
+        };
+        let frame = frame_in(buffer, ffi_result.frame, self.metadata.frame_data_length())?;
+        Ok((ProcessingResult::from(ffi_result), frame))
     }
+}
+
+/// Returns the `len` samples at `frame`, after checking that they lie in `buffer`.
+fn frame_in(
+    buffer: &[u8],
+    frame: *const acc_int16_complex_t,
+    len: usize,
+) -> Result<&[AccComplex], SensorError> {
+    if len == 0 {
+        return Ok(&[]);
+    }
+    let size = len
+        .checked_mul(core::mem::size_of::<AccComplex>())
+        .ok_or(SensorError::ProcessingFailed)?;
+    let offset = (frame as usize)
+        .checked_sub(buffer.as_ptr() as usize)
+        .ok_or(SensorError::ProcessingFailed)?;
+    let in_buffer = offset
+        .checked_add(size)
+        .is_some_and(|end| end <= buffer.len());
+    if frame.is_null() || !in_buffer || offset % core::mem::align_of::<AccComplex>() != 0 {
+        return Err(SensorError::ProcessingFailed);
+    }
+    // SAFETY: the samples lie in `buffer` and are aligned, and `AccComplex` is a transparent
+    // wrapper of the SDK's sample type, for which any bytes are valid
+    Ok(unsafe { core::slice::from_raw_parts(buffer.as_ptr().add(offset).cast(), len) })
 }
 
 impl Drop for Processing {
@@ -121,6 +152,39 @@ impl From<acc_processing_result_t> for ProcessingResult {
             temperature: result.temperature,
             // Note: result.frame pointer is intentionally not stored
             // as it points into the buffer and becomes invalid
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::radar::RadarBuffer;
+
+    #[test]
+    fn frame_must_lie_in_the_buffer() {
+        let buffer = RadarBuffer::<64>::new();
+        let base = buffer.as_ptr() as *const acc_int16_complex_t;
+        let at = |offset: usize| base.wrapping_byte_add(offset);
+
+        let frame = frame_in(&buffer, at(8), 4).unwrap();
+        assert_eq!(frame.len(), 4);
+        assert_eq!(frame.as_ptr() as usize, buffer.as_ptr() as usize + 8);
+        // The last samples fit exactly
+        assert_eq!(frame_in(&buffer, at(48), 4).unwrap().len(), 4);
+        assert_eq!(frame_in(&buffer, core::ptr::null(), 0).unwrap().len(), 0);
+
+        for (frame, len) in [
+            (at(52), 4),
+            (core::ptr::null(), 1),
+            (base.wrapping_byte_sub(4), 1),
+            (at(1), 1),
+            (at(0), usize::MAX),
+        ] {
+            assert_eq!(
+                frame_in(&buffer, frame, len).err(),
+                Some(SensorError::ProcessingFailed)
+            );
         }
     }
 }

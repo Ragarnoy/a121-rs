@@ -19,8 +19,18 @@ use a121_rs::memory::sdk_heap_stats;
 use a121_rs::radar::version::rss_version;
 use a121_rs::radar::Radar;
 use a121_rs::AlignedBuffer;
-use xe125_nightly::*;
+use xe125::*;
 use {defmt_rtt as _, panic_probe as _};
+
+// Makes the linker take sinf, cosf and tanf from newlib's libm, linked ahead of compiler_builtins
+// by build.rs, see there
+unsafe extern "C" {
+    fn sinf(x: f32) -> f32;
+    fn cosf(x: f32) -> f32;
+    fn tanf(x: f32) -> f32;
+}
+#[used]
+static NEWLIB_TRIG: [unsafe extern "C" fn(f32) -> f32; 3] = [sinf, cosf, tanf];
 
 bind_interrupts!(struct Irqs {
     EXTI3 => exti::InterruptHandler<interrupt::typelevel::EXTI3>;
