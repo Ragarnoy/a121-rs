@@ -8,7 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.3.0] - Unreleased
 
 ### Changed
-- Updated to a121-sys 0.8.0 (Acconeer A121 SDK v1.13.0). The SDK C API is unchanged since 1.12.
+- Updated to a121-sys 0.8.1 (Acconeer A121 SDK v1.13.0), which builds for the bare-metal ESP and
+  Cortex-M33 targets without extra bindgen settings. The SDK C API is unchanged since 1.12.
 - The `distance` and `presence` features now enable the matching a121-sys features, so the detector
   libraries are only linked when requested. Previously both were always linked.
 - The `std` feature now enables `a121-sys/std`.

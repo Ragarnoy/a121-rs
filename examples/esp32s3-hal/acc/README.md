@@ -15,16 +15,14 @@ Install the Xtensa Rust toolchain with `espup install` (the `esp` toolchain must
 then:
 
 ```sh
-source ~/export-esp.sh   # LIBCLANG_PATH and the xtensa-esp32s3-elf-gcc C compiler
-# bindgen: target the ESP32-S3 and use the toolchain's newlib headers instead of the host's
-export BINDGEN_EXTRA_CLANG_ARGS_xtensa_esp32s3_none_elf="--target=xtensa-esp-elf -mcpu=esp32s3 --sysroot=$(xtensa-esp32s3-elf-gcc -print-sysroot)"
+source ~/export-esp.sh   # Espressif's libclang and the xtensa-esp32s3-elf-gcc C compiler
 ```
 
-bindgen does not rerun when these variables change: after changing them, run `cargo clean -p a121-sys`.
+`a121-sys` finds the compiler and its newlib headers itself.
 
 Then build and flash with `cargo run --release` (runs `espflash flash --monitor`). Logs are defmt.
 
 Without the libraries, `cargo check --release --features a121-rs/stub_library` compile-checks the
-example against stubs. a121-sys builds the stubs with the host compiler for this target, so
-they cannot be linked: use `cargo check`, not `cargo build`. Linking against the real libraries and running on hardware have not been
-tested with this version of the example.
+example against stub libraries. With esp toolchain 1.99 (gcc 15.2), linking fails with
+`l32r: literal placed after use`, which a minimal esp-hal program also hits, so linking and running
+on hardware have not been tested with this version of the example.

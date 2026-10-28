@@ -16,9 +16,9 @@ dependencies = [
 
 [[package]]
 name = "a121-sys"
-version = "0.8.0"
+version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "abdc62c7e9da54586115089345dbe7e2451b337a28b7a7c0e196195b7aec4489"
+checksum = "8ef54202eff04c49e9160fbf9179b98fbf4a51be2cf486f6723973230ffe0e87"
 dependencies = [
  "bindgen",
  "cc",
