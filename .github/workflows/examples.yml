@@ -1,5 +1,5 @@
-# Checks that the examples build against the a121-sys stub libraries. The Acconeer libraries are
-# not public, so the examples are not linked here. See check.yml for how concurrency cancellation
+# Checks that the examples build and link against the a121-sys stub libraries. The Acconeer
+# libraries are not public. See check.yml for how concurrency cancellation
 # and workflow triggering work.
 permissions:
   contents: read
@@ -38,5 +38,12 @@ jobs:
       - name: Install the example's toolchain
         # rustup installs the toolchain named in the example's rust-toolchain.toml
         run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: examples/${{ matrix.example }}
       - name: cargo clippy
         run: cargo clippy --features a121-rs/stub_library -- -D warnings
+      - name: cargo build
+        # Links against the stubs, which catches missing linker setup but not symbols that only the
+        # real SDK needs
+        run: cargo build --release --features a121-rs/stub_library

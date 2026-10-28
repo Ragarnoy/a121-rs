@@ -25,5 +25,6 @@ bindgen does not rerun when these variables change: after changing them, run `ca
 Then build and flash with `cargo run --release` (runs `espflash flash --monitor`). Logs are defmt.
 
 Without the libraries, `cargo check --release --features a121-rs/stub_library` compile-checks the
-example against stubs. Linking against the real libraries and running on hardware have not been
+example against stubs. a121-sys builds the stubs with the host compiler for this target, so
+they cannot be linked: use `cargo check`, not `cargo build`. Linking against the real libraries and running on hardware have not been
 tested with this version of the example.

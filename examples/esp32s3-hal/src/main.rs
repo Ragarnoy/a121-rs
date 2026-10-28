@@ -85,9 +85,10 @@ async fn init(
     defmt::info!("Radar calibrated and prepared.");
 
     let mut distance = RadarDistanceDetector::new(&mut radar).unwrap();
-    let mut buffer = AlignedBuffer::new(distance.get_distance_buffer_size().unwrap());
-    let mut static_cal_result =
-        AlignedBuffer::new(distance.get_static_result_buffer_size().unwrap());
+    // Buffer sizes depend on the detector configuration, so ask the SDK
+    let sizes = distance.memory_requirements().unwrap();
+    let mut buffer = AlignedBuffer::new(sizes.buffer);
+    let mut static_cal_result = AlignedBuffer::new(sizes.static_calibration);
     defmt::info!("Starting detector calibration...");
     let mut dynamic_cal_result = distance
         .calibrate_detector(&calibration, &mut buffer, &mut static_cal_result)

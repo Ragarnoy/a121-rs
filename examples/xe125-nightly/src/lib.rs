@@ -60,6 +60,7 @@ pub fn xm125_clock_config() -> embassy_stm32::Config {
 }
 
 // C allocator shims - required for C SDK code that calls malloc directly.
+// `heap-stats` only counts allocations made through the a121-rs HAL, not these.
 // Note: a121-rs itself uses Rust's GlobalAlloc (above), but the underlying
 // C SDK may still call malloc/free/calloc/realloc in its internal code.
 

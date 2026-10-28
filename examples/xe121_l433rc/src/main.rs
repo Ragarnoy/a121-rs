@@ -96,9 +96,9 @@ async fn main(_spawner: Spawner) {
         .await
         .unwrap();
     info!("SDK heap after detector calibration: {}", sdk_heap_stats());
+    let mut heap_logged = false;
 
     loop {
-        Timer::after(Duration::from_millis(200)).await;
         distance
             .prepare_detector(&calibration, &mut buffer)
             .unwrap();
@@ -106,6 +106,11 @@ async fn main(_spawner: Spawner) {
 
         match distance.process_data(&mut buffer, &mut static_cal_result, &mut dynamic_cal_result) {
             Ok(res) => {
+                if !heap_logged {
+                    // The peak covers sensor and detector calibration and the first frame
+                    info!("SDK heap after the first frame: {}", sdk_heap_stats());
+                    heap_logged = true;
+                }
                 if res.num_distances() > 0 {
                     info!(
                         "{} Distances found:\n{:?}",

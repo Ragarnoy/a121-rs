@@ -89,8 +89,9 @@ cargo run --release   # flashes with probe-rs
 | `esp32c6-hal` | ESP32-C6 with an XE121 | `riscv32imac-unknown-none-elf` | stable, RISC-V gcc with newlib headers | `distance, logger, libm` | Compile-checked only |
 | `esp32s3-hal` | ESP32-S3 | `xtensa-esp32s3-none-elf` | `esp` 1.99 or newer (espup) | `distance, logger, libm` | Compile-checked only |
 
-The STM32 examples log the SDK heap use (`heap-stats`) after detector calibration, which is the
-number to size their 32 KB heap from. CI checks the STM32 examples against the a121-sys stub libraries,
+The STM32 examples log the SDK heap use (`heap-stats`) after detector calibration and after the
+first frame. Their 32 KB heap must hold that peak plus the detector buffers (`memory_requirements`),
+and the allocator's overhead of a few bytes per allocation. CI checks the STM32 examples against the a121-sys stub libraries,
 since the Acconeer libraries are not public.
 
 - `xe125-nightly` links newlib with `arm-none-eabi-gcc` and needs nightly for `-Z pre-link-args`,
