@@ -12,11 +12,12 @@
 //! | Detector buffers | `get_distance_buffer_size`, `get_static_result_buffer_size`, `PresenceDetector::get_buffer_size`, or `memory_requirements` on the detector | Exact, reported by the SDK |
 //! | Session buffer | [`RadarConfig::config_buffer_size`](crate::config::RadarConfig::config_buffer_size) | Exact, reported by the SDK |
 //! | Session memory | [`SessionMemoryCalculator`](crate::memory::SessionMemoryCalculator), [`calc_session_total`](crate::memory::calc_session_total) | Acconeer's memory model, which it states is within ±5% |
-//! | Detector RSS heap | `heap-stats` feature, `sdk_heap_stats` | Measured at run time |
+//! | SDK heap | `heap-stats` feature, `sdk_heap_stats` | Measured at run time |
 //!
-//! The SDK has no query for the RSS heap of a detector, which depends on the configuration it
-//! builds internally. To size the heap, enable the `heap-stats` feature and read
-//! `sdk_heap_stats` after the detector has run a frame.
+//! The SDK has no query for its heap, which for a detector depends on the configuration it builds
+//! internally. To size the heap, enable the `heap-stats` feature and read `sdk_heap_stats` after
+//! the application has run a frame. The statistics cover every SDK allocation, for all radars,
+//! detectors and processing; to measure one part, compare `current` before and after creating it.
 //!
 //! # Session memory at compile time
 //!
@@ -184,7 +185,7 @@ impl MemoryRequirements {
 }
 
 /// Sum of the points of all subsweeps in `config`, for one sweep.
-pub(crate) fn total_points(config: &RadarConfig) -> usize {
+fn total_points(config: &RadarConfig) -> usize {
     (0..config.num_subsweep())
         .filter_map(|index| config.get_subsweep(index))
         .map(|subsweep| subsweep.num_points(config) as usize)
@@ -246,6 +247,8 @@ pub struct DetectorMemory {
 
 /// Memory the SDK has allocated through the HAL, counted when the `heap-stats` feature is on.
 ///
+/// The counts cover every SDK allocation: all radars, detectors and processing.
+///
 /// Sizes are those the SDK requested. Each allocation also costs a header of 8 bytes on Arm and
 /// 16 bytes elsewhere, plus whatever overhead the global allocator adds.
 #[cfg(feature = "heap-stats")]
@@ -305,6 +308,10 @@ pub(crate) fn record_alloc(size: usize) {
 #[cfg(feature = "heap-stats")]
 pub(crate) fn record_free(size: usize) {
     update_heap_stats(|stats| {
+        debug_assert!(
+            stats.current >= size && stats.allocations > 0,
+            "SDK heap statistics freed more than was allocated"
+        );
         stats.current = stats.current.saturating_sub(size);
         stats.allocations = stats.allocations.saturating_sub(1);
     });

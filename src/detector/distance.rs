@@ -117,8 +117,7 @@ where
     /// type; see [`AlignedBuffer`](crate::AlignedBuffer).
     /// Use [`get_distance_buffer_size`](Self::get_distance_buffer_size) and
     /// [`get_static_result_buffer_size`](Self::get_static_result_buffer_size)
-    /// to determine required sizes, or use compile-time calculation functions
-    /// from the [`memory`](crate::memory) module.
+    /// to determine the required sizes, or [`memory_requirements`](Self::memory_requirements).
     ///
     /// Returns [`SensorError::NotReady`] if the radar is hibernating or
     /// [faulted](crate::radar::RadarState::Faulted). If calibration fails, the radar is faulted.
@@ -170,8 +169,8 @@ where
     ///
     /// The caller must ensure that:
     /// - `buffer.len() >= self.get_distance_buffer_size()`
-    /// - `buffer` is aligned for any built-in type (16 bytes is always enough), as
-    ///   [`AlignedBuffer`](crate::AlignedBuffer) is
+    /// - `buffer` is aligned for any built-in type, as [`RadarBuffer`](crate::RadarBuffer) and
+    ///   [`AlignedBuffer`](crate::AlignedBuffer) are
     /// - `detector_cal_result_static.len() >= self.get_static_result_buffer_size()`
     ///
     /// Violating these requirements may cause undefined behavior including:
@@ -197,21 +196,19 @@ where
     /// #                             impl embedded_hal::digital::OutputPin,
     /// #                             impl embedded_hal_async::delay::DelayNs>,
     /// #                  calibration: a121_rs::CalibrationResult) {
-    /// // Sizes measured with `get_distance_buffer_size` and `get_static_result_buffer_size`
-    /// // for this detector configuration on this SDK version
+    /// // Sizes measured with `memory_requirements` for this detector configuration on this SDK
+    /// // version. They change with the configuration and the SDK, so check them once.
     /// const BUFFER_SIZE: usize = 8192;
     /// const CAL_SIZE: usize = 4096;
+    /// let required = detector.memory_requirements().unwrap();
+    /// assert!(BUFFER_SIZE >= required.buffer && CAL_SIZE >= required.static_calibration);
     ///
-    /// #[repr(align(16))]
-    /// struct Aligned([u8; BUFFER_SIZE]);
-    ///
-    /// let mut buffer = Aligned([0; BUFFER_SIZE]);
+    /// let mut buffer = a121_rs::RadarBuffer::<BUFFER_SIZE>::new();
     /// let mut static_cal = [0u8; CAL_SIZE];
     ///
-    /// // SAFETY: the buffers are at least as large as the SDK reported for this configuration,
-    /// // and `buffer` is 16-byte aligned
+    /// // SAFETY: the buffers are as large as the SDK requires, and `RadarBuffer` is aligned
     /// unsafe {
-    ///     detector.calibrate_detector_unchecked(&calibration, &mut buffer.0, &mut static_cal)
+    ///     detector.calibrate_detector_unchecked(&calibration, &mut buffer, &mut static_cal)
     ///         .await
     ///         .unwrap();
     /// }
@@ -491,8 +488,8 @@ where
     ///
     /// The caller must ensure:
     /// - `buffer.len() >= self.get_distance_buffer_size()`
-    /// - `buffer` is aligned for any built-in type (16 bytes is always enough), as
-    ///   [`AlignedBuffer`](crate::AlignedBuffer) is
+    /// - `buffer` is aligned for any built-in type, as [`RadarBuffer`](crate::RadarBuffer) and
+    ///   [`AlignedBuffer`](crate::AlignedBuffer) are
     /// - `detector_cal_result_static.len() >= self.get_static_result_buffer_size()`
     pub unsafe fn process_data_unchecked(
         &mut self,
