@@ -244,39 +244,17 @@ where
         unsafe { acc_detector_presence_reset_filters(self.inner.inner_mut()) }
     }
 
-    /// Estimates memory requirements for this presence detector configuration.
+    /// Returns the buffer size this detector needs, as reported by the SDK.
     ///
-    /// This method provides a conservative estimate of memory requirements based on
-    /// the radar configuration. It can be called before allocating buffers to ensure
-    /// sufficient memory is available.
+    /// The SDK's own heap is not included; measure it with the `heap-stats` feature and
+    /// `memory::sdk_heap_stats`.
     ///
-    /// # Returns
-    ///
-    /// A `MemoryRequirements` struct containing:
-    /// - `external_heap`: Memory for data buffers (bytes)
-    /// - `rss_heap`: Memory for RSS internal use (bytes)
-    /// - `total`: Total memory required (bytes)
-    ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// # use a121_rs::radar::Radar;
-    /// # use a121_rs::detector::presence::PresenceDetector;
-    /// # fn example(radar: &mut Radar<impl embedded_hal::spi::SpiDevice<u8>,
-    /// #                  impl embedded_hal_async::digital::Wait,
-    /// #                             impl embedded_hal::digital::OutputPin,
-    /// #                             impl embedded_hal_async::delay::DelayNs>) {
-    /// let mut detector = PresenceDetector::new(radar).unwrap();
-    /// let mem = detector.estimate_memory_requirements();
-    /// println!("Total memory needed: {} bytes", mem.total);
-    /// println!("External heap: {} bytes", mem.external_heap);
-    /// println!("RSS heap: {} bytes", mem.rss_heap);
-    /// # }
-    /// ```
-    pub fn estimate_memory_requirements(&self) -> crate::memory::MemoryRequirements {
-        use crate::memory::PresenceMemoryCalculator;
-        let calc = PresenceMemoryCalculator::new(&self.radar.config);
-        calc.memory_requirements()
+    /// Returns [`SensorError::InitFailed`] if the SDK could not report the size.
+    pub fn memory_requirements(&self) -> Result<crate::memory::DetectorMemory, SensorError> {
+        Ok(crate::memory::DetectorMemory {
+            buffer: self.get_buffer_size()?,
+            static_calibration: 0,
+        })
     }
 
     /// Detects presence with automatic buffer size validation.

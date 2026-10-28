@@ -170,6 +170,8 @@ where
     ///
     /// The caller must ensure that:
     /// - `buffer.len() >= self.get_distance_buffer_size()`
+    /// - `buffer` is aligned for any built-in type (16 bytes is always enough), as
+    ///   [`AlignedBuffer`](crate::AlignedBuffer) is
     /// - `detector_cal_result_static.len() >= self.get_static_result_buffer_size()`
     ///
     /// Violating these requirements may cause undefined behavior including:
@@ -190,22 +192,26 @@ where
     ///
     /// ```no_run
     /// # use a121_rs::detector::distance::RadarDistanceDetector;
-    /// # use a121_rs::memory::calc_distance_external_heap;
     /// # async fn example(mut detector: RadarDistanceDetector<'_, impl embedded_hal::spi::SpiDevice<u8>,
     /// #                             impl embedded_hal_async::digital::Wait,
     /// #                             impl embedded_hal::digital::OutputPin,
     /// #                             impl embedded_hal_async::delay::DelayNs>,
     /// #                  calibration: a121_rs::CalibrationResult) {
-    /// // Using compile-time sized buffers
-    /// const BUFFER_SIZE: usize = calc_distance_external_heap(100, 1, 16);
-    /// const CAL_SIZE: usize = 4096; // Known to be large enough
+    /// // Sizes measured with `get_distance_buffer_size` and `get_static_result_buffer_size`
+    /// // for this detector configuration on this SDK version
+    /// const BUFFER_SIZE: usize = 8192;
+    /// const CAL_SIZE: usize = 4096;
     ///
-    /// let mut buffer = [0u8; BUFFER_SIZE];
+    /// #[repr(align(16))]
+    /// struct Aligned([u8; BUFFER_SIZE]);
+    ///
+    /// let mut buffer = Aligned([0; BUFFER_SIZE]);
     /// let mut static_cal = [0u8; CAL_SIZE];
     ///
-    /// // SAFETY: Buffers are sized correctly at compile time
+    /// // SAFETY: the buffers are at least as large as the SDK reported for this configuration,
+    /// // and `buffer` is 16-byte aligned
     /// unsafe {
-    ///     detector.calibrate_detector_unchecked(&calibration, &mut buffer, &mut static_cal)
+    ///     detector.calibrate_detector_unchecked(&calibration, &mut buffer.0, &mut static_cal)
     ///         .await
     ///         .unwrap();
     /// }
@@ -266,39 +272,18 @@ where
         Ok(DistanceSizes::new(&self.inner)?.buffer_size)
     }
 
-    /// Estimates memory requirements for this distance detector configuration.
+    /// Returns the buffer sizes this detector needs, as reported by the SDK.
     ///
-    /// This method provides a conservative estimate of memory requirements based on
-    /// the radar configuration. It can be called before allocating buffers to ensure
-    /// sufficient memory is available.
+    /// The SDK's own heap is not included; measure it with the `heap-stats` feature and
+    /// `memory::sdk_heap_stats`.
     ///
-    /// # Returns
-    ///
-    /// A `MemoryRequirements` struct containing:
-    /// - `external_heap`: Memory for data buffers (bytes)
-    /// - `rss_heap`: Memory for RSS internal use (bytes)
-    /// - `total`: Total memory required (bytes)
-    ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// # use a121_rs::radar::Radar;
-    /// # use a121_rs::detector::distance::RadarDistanceDetector;
-    /// # fn example(radar: &mut Radar<impl embedded_hal::spi::SpiDevice<u8>,
-    /// #                  impl embedded_hal_async::digital::Wait,
-    /// #                             impl embedded_hal::digital::OutputPin,
-    /// #                             impl embedded_hal_async::delay::DelayNs>) {
-    /// let mut detector = RadarDistanceDetector::new(radar).unwrap();
-    /// let mem = detector.estimate_memory_requirements();
-    /// println!("Total memory needed: {} bytes", mem.total);
-    /// println!("External heap: {} bytes", mem.external_heap);
-    /// println!("RSS heap: {} bytes", mem.rss_heap);
-    /// # }
-    /// ```
-    pub fn estimate_memory_requirements(&self) -> crate::memory::MemoryRequirements {
-        use crate::memory::DistanceMemoryCalculator;
-        let calc = DistanceMemoryCalculator::new(&self.radar.config);
-        calc.memory_requirements()
+    /// Returns [`SensorError::InitFailed`] if the SDK could not report the sizes.
+    pub fn memory_requirements(&self) -> Result<crate::memory::DetectorMemory, SensorError> {
+        let sizes = DistanceSizes::new(&self.inner)?;
+        Ok(crate::memory::DetectorMemory {
+            buffer: sizes.buffer_size,
+            static_calibration: sizes.detector_cal_result_static_size,
+        })
     }
 
     /// Updates the calibration dynamically based on new sensor data.
@@ -506,6 +491,8 @@ where
     ///
     /// The caller must ensure:
     /// - `buffer.len() >= self.get_distance_buffer_size()`
+    /// - `buffer` is aligned for any built-in type (16 bytes is always enough), as
+    ///   [`AlignedBuffer`](crate::AlignedBuffer) is
     /// - `detector_cal_result_static.len() >= self.get_static_result_buffer_size()`
     pub unsafe fn process_data_unchecked(
         &mut self,

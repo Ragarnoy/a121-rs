@@ -82,8 +82,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   their first type parameter.
 - **Breaking:** new `SensorError::SensorUnavailable`, returned by `Radar::new` when a radar for the
   sensor id exists or `MAX_SENSORS` radars exist.
+- **Breaking:** `RadarDistanceDetector::memory_requirements` and `PresenceDetector::memory_requirements`
+  replace `estimate_memory_requirements`. They return the buffer sizes the SDK reports for the
+  detector's configuration, as a `memory::DetectorMemory`.
 
 ### Added
+- `heap-stats` feature: counts the memory the SDK allocates through the HAL. `memory::sdk_heap_stats`
+  returns the current and peak bytes and the live allocations; `memory::reset_sdk_heap_peak` resets
+  the peak.
 - `logger` feature: log SDK messages through a Rust variadic function (defmt) instead of the C logging
   bridge, on stable Rust. A small built-in printf formatter renders the SDK messages, so newlib's
   `vsnprintf` is not needed. Messages longer than 256 bytes are truncated, and floats are rendered
@@ -136,6 +142,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `RadarDistanceDetector::update_calibration` ignored SDK failures after the first step and could wait
   forever.
 - Broken module-level doctest in `memory`.
+- The detectors' memory estimates modelled the radar's configuration, not the configuration the
+  detector gives the SDK, and counted the points of every subsweep once per subsweep.
+- The `calibrate_detector_unchecked` example sized its buffer with an estimate that could be smaller
+  than the SDK needs, and did not align it.
 - Docs: `RadarConfig::set_start_point` takes points, not millimetres, and PRF measurement time is
   inversely proportional to the PRF (corrected in SDK 1.13).
 - Examples build against the current API (xe125, xe121; the esp32 examples are updated but unverified),
@@ -151,3 +161,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 - The unused 16-bit SPI transfer callback, which contained `todo!()`.
+- **Breaking:** the detector memory models, which could undersize SDK buffers:
+  `memory::DistanceMemoryCalculator`, `PresenceMemoryCalculator`, the `calc_distance_*` and
+  `calc_presence_*` functions, and the `memory_for_distance!` and `memory_for_presence!` macros. Use
+  the detectors' `memory_requirements` for buffers, and `heap-stats` to measure the SDK heap. The
+  session helpers (`SessionMemoryCalculator`, `calc_session_*`, `memory_for_session!`) remain.
