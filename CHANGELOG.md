@@ -69,8 +69,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   newlib (it uses the `logger` and `libm` features), and sizes its buffers from the SDK.
   The ESP32 examples use esp-hal 1.2 and esp-rtos, need no nightly features or C library shims,
   and compile against the stub libraries; they are untested on hardware.
-- CI: the example workflow clippy-checks every example against the stub libraries instead of
-  checking xe125 against SDK 1.5.0 libraries from FTP, and actions use `actions/checkout@v5`.
+- CI: the example workflow clippy-checks and links the STM32 examples against the stub libraries,
+  instead of checking xe125 against SDK 1.5.0 libraries from FTP. The ESP32 examples are not in CI.
+  Actions use `actions/checkout@v5`.
 - **Breaking:** narrowed the public API to what users of the crate need. These are no longer public:
   the `hal` module (`Radar::new` sets up the HAL), the
   `libm` module (its `extern "C"` math functions are still linked), `RadarConfig::ptr`,
