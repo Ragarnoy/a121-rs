@@ -1,3 +1,5 @@
+mod assembly_test;
+mod log_level;
 pub mod version;
 
 use a121_sys::{acc_sensor_connected, acc_sensor_id_t, acc_sensor_t};
@@ -15,10 +17,16 @@ use core::ptr::NonNull;
 use crate::config::RadarConfig;
 pub use crate::hal::MAX_SENSORS;
 use crate::hal::{ensure_registered, register_spi, spi_checked, SpiRegistration, SDK_ALIGN};
+use crate::num::AccComplex;
 use crate::processing::{Processing, ProcessingResult};
 use crate::sensor::calibration::CalibrationResult;
 use crate::sensor::error::SensorError;
 use crate::sensor::{InnerSensor, Sensor};
+pub use assembly_test::{
+    enable_assembly_test_diagnostic_logs, AssemblyTest, AssemblyTestOutcome, AssemblyTestReport,
+    ASSEMBLY_TEST_MIN_BUFFER_SIZE,
+};
+pub use log_level::{set_sdk_log_level, LogLevel};
 
 /// Default scratch buffer size for radar operations (calibration and sensor preparation).
 ///
@@ -127,9 +135,9 @@ pub enum RadarState {
     Hibernating,
     /// The sensor's state is unknown: an operation failed in a way that can leave it busy or
     /// half-configured, such as an SPI transfer failure or a missed interrupt while measuring, or
-    /// an operation's future was dropped before it completed. [`Radar::reset_sensor`] and
-    /// [`Radar::calibrate`] power-cycle the sensor and recover it; every other operation that
-    /// drives the sensor is refused. The diagnostics [`Radar::is_connected`] and
+    /// an operation's future was dropped before it completed. [`Radar::reset_sensor`],
+    /// [`Radar::calibrate`] and [`Radar::assembly_test`] power-cycle the sensor and recover it;
+    /// every other operation that drives the sensor is refused. The diagnostics [`Radar::is_connected`] and
     /// [`Radar::check_status`] stay available.
     Faulted,
 }
@@ -371,11 +379,35 @@ where
     /// than [`Processing::buffer_size`], and [`SensorError::BufferMisaligned`] when it is not
     /// aligned for any built-in type.
     pub fn process(&mut self, data: &mut [u8]) -> Result<ProcessingResult, SensorError> {
+        self.processing_mut()?
+            .execute(data)
+            .map(|(result, _)| result)
+    }
+
+    /// Processes a frame read by [`Radar::measure`], and returns the result with the frame's
+    /// samples, which stay in `data`. The samples are laid out as described by the
+    /// [processing metadata](Processing::metadata).
+    ///
+    /// # Errors
+    ///
+    /// As [`Radar::process`], and [`SensorError::ProcessingFailed`] if the SDK placed the frame
+    /// outside `data`.
+    pub fn process_frame<'data>(
+        &mut self,
+        data: &'data mut [u8],
+    ) -> Result<(ProcessingResult, &'data [AccComplex]), SensorError> {
+        let processing = self.processing_mut()?;
+        let (result, frame) = processing.execute(data)?;
+        Ok((result, processing.frame(data, frame)?))
+    }
+
+    /// The processing for the prepared configuration, while the radar is ready.
+    fn processing_mut(&mut self) -> Result<&mut Processing, SensorError> {
         if self.state != RadarState::Ready {
             return Err(SensorError::NotReady);
         }
         match &mut self.prepared {
-            Prepared::Radar(processing) => processing.execute(data),
+            Prepared::Radar(processing) => Ok(processing),
             _ => Err(SensorError::NotReady),
         }
     }

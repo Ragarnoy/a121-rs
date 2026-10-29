@@ -1,4 +1,5 @@
 pub mod config;
+pub mod processing;
 pub mod results;
 
 use crate::detector::presence::config::PresenceConfig;

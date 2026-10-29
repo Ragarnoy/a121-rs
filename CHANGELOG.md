@@ -64,7 +64,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unprepared, since the SDK prepares the sensor with the detector's own configurations. It and the
   detector prepares require a powered radar that is not faulted.
 - The xe125 example links newlib's `sinf`, `cosf` and `tanf` instead of the compiler_builtins ones,
-  which saves about 10 KB of flash, and logs at `info` level by default.
+  which saves about 12 KB of flash, and logs at `info` level by default. It is renamed from
+  `xe125-nightly` and builds on stable: a build script replaces `-Z pre-link-args`.
 - Examples: the STM32 examples use embassy-stm32 0.6, embassy-executor 0.10, talc 5 and
   `StaticCell`, and log the SDK heap use with `heap-stats`. xe121 no longer needs math shims or
   newlib (it uses the `logger` and `libm` features), and sizes its buffers from the SDK.
@@ -96,6 +97,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   detector's configuration, as a `memory::DetectorMemory`.
 
 ### Added
+- Presence processing without the detector (`detector::presence::processing`):
+  `PresenceProcessingConfig` and `PresenceProcessing` look for presence in frames measured with a
+  `RadarConfig`.
+- `Radar::process_frame` returns the processed frame's samples with the `ProcessingResult`.
+  `AccComplex` is `#[repr(transparent)]` over the SDK's sample type.
+- `Radar::assembly_test` runs the SDK's assembly test (SPI, enable and interrupt pins, clock and
+  supply, calibration) and returns an `AssemblyTestReport`.
+- `PresenceConfig` getters for every setting, and setters for HWAAS, sweeps per frame, the idle
+  state, app-driven frame rate, the presence timeout, the filter time constants and cutoffs,
+  automatic subsweeps and signal quality.
+- `RadarConfig::set_iq_imbalance_compensation` and its subsweep variant, with getters.
+- `RadarConfig::log`, `PresenceConfig::log` and `RadarDistanceDetector::log_config` print a
+  configuration through the SDK logger.
+- `radar::set_sdk_log_level` and `radar::LogLevel` choose which SDK messages reach the logger.
+- `radar::version::rss_version_str` returns the SDK's version string.
 - `heap-stats` feature: counts the memory the SDK allocates through the HAL. `memory::sdk_heap_stats`
   returns the current and peak bytes and the live allocations; `memory::reset_sdk_heap_peak` resets
   the peak.

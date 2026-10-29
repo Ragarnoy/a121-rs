@@ -1,5 +1,5 @@
 [package]
-name = "xe125-nightly"
+name = "xe125"
 version = "0.1.0"
 edition = "2021"
 

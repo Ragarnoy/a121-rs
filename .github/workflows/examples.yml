@@ -19,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        example: [xe125-nightly, xe121_l433rc]
+        example: [xe125, xe121_l433rc]
     defaults:
       run:
         working-directory: examples/${{ matrix.example }}

@@ -255,6 +255,12 @@ where
         self.radar.state()
     }
 
+    /// Prints the detector's configuration, including the settings it derived, through the SDK
+    /// logger.
+    pub fn log_config(&self) {
+        unsafe { acc_detector_distance_config_log(self.inner.inner(), self.config.inner.as_ptr()) }
+    }
+
     /// Returns the size of the buffer needed for static calibration results.
     ///
     /// Returns [`SensorError::InitFailed`] if the SDK could not report the size.

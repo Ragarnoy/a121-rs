@@ -261,6 +261,27 @@ where
         }
     }
 
+    /// Waits up to `timeout_ms` for the interrupt pin to go high. Returns `false` on a timeout or
+    /// a pin error.
+    pub async fn wait_for_interrupt<SINT: Wait>(
+        &mut self,
+        interrupt: &mut SINT,
+        timeout_ms: u32,
+    ) -> bool {
+        use core::future::Future;
+        use core::task::Poll;
+
+        let mut high = core::pin::pin!(interrupt.wait_for_high());
+        let mut timeout = core::pin::pin!(self.dly.delay_ms(timeout_ms));
+        core::future::poll_fn(|cx| {
+            if let Poll::Ready(result) = high.as_mut().poll(cx) {
+                return Poll::Ready(result.is_ok());
+            }
+            timeout.as_mut().poll(cx).map(|()| false)
+        })
+        .await
+    }
+
     pub async fn measure<SINT: Wait>(&mut self, mut interrupt: SINT) -> Result<(), SensorError> {
         // Implementation to start the radar measurement
         let success = spi_checked(self.inner.id, || unsafe {
