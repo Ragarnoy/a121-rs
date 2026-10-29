@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.3.0] - Unreleased
+## [0.3.0] - 2026-10-29
 
 ### Changed
 - Updated to a121-sys 0.8.1 (Acconeer A121 SDK v1.13.0), which builds for the bare-metal ESP and
@@ -38,8 +38,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sensor must be prepared again for a new configuration. `Radar::process` runs the processing.
 - **Breaking:** `Radar::hibernate_on` and `hibernate_off` are `async`: they now disable and enable the
   sensor with the enable pin, as the SDK requires.
-- **Breaking:** `Radar::reset_sensor`, `Processing::new` and `Processing::execute` return `Result`.
-- **Breaking:** `Radar::measure`, `Processing::execute` and the checked detector functions
+- **Breaking:** `Radar::reset_sensor` returns `Result`.
+- **Breaking:** `Radar::measure`, `Radar::process` and the checked detector functions
   (`calibrate_detector`, `update_calibration`, `prepare_detector`, `process_data`,
   `detect_presence`) require buffers aligned for any built-in type (see `RadarBuffer` and
   `AlignedBuffer`). `measure` also requires the buffer size of the prepared configuration or detector.
@@ -57,8 +57,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Breaking:** new `RadarState::Faulted`. The radar enters it when the sensor's state becomes
   unknown: a failed measurement, read, calibration, reset, or hibernation entry or exit; an SPI
   failure while preparing; or a measurement, calibration or reset future dropped before it
-  completed, for example by a timeout. `Radar::reset_sensor` and `Radar::calibrate` power-cycle the
-  sensor and recover it; other sensor operations and `Radar::process` are refused, while
+  completed, for example by a timeout. `Radar::reset_sensor`, `Radar::calibrate` and
+  `Radar::assembly_test` power-cycle the sensor and recover it; other sensor operations and `Radar::process` are refused, while
   `is_connected` and `check_status` stay available. Detectors report it through `radar_state()`.
 - Distance detector calibration (`calibrate_detector`, `update_calibration`) leaves the radar
   unprepared, since the SDK prepares the sensor with the detector's own configurations. It and the
