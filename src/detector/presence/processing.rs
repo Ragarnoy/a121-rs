@@ -292,17 +292,18 @@ impl PresenceProcessing {
         config: &PresenceProcessingConfig,
         sensor_config: &RadarConfig,
     ) -> Result<Self, SensorError> {
-        let ptr = unsafe {
-            acc_detector_presence_processing_create(config.inner.as_ptr(), sensor_config.ptr())
-        };
-        let inner = NonNull::new(ptr).ok_or(SensorError::InitFailed)?;
-        let buffer_size =
-            unsafe { acc_detector_presence_processing_get_buffer_size(sensor_config.ptr()) };
-        // The SDK's processing reports the frame length for the configuration
+        // The SDK's processing reports the frame length for the configuration. It is dropped before
+        // the presence processing is created, so a failure here leaks nothing.
         let frame_len = Processing::new(sensor_config)
             .map_err(|_| SensorError::InitFailed)?
             .metadata()
             .frame_data_length();
+        let buffer_size =
+            unsafe { acc_detector_presence_processing_get_buffer_size(sensor_config.ptr()) };
+        let ptr = unsafe {
+            acc_detector_presence_processing_create(config.inner.as_ptr(), sensor_config.ptr())
+        };
+        let inner = NonNull::new(ptr).ok_or(SensorError::InitFailed)?;
         Ok(Self {
             inner,
             buffer_size: buffer_size as usize,

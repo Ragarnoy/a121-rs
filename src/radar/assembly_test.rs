@@ -68,12 +68,34 @@ impl AssemblyTest {
 
 /// The outcome of one test.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct AssemblyTestOutcome {
-    /// The SDK's name for the test, such as `"Basic read test"`
-    pub name: &'static str,
+    /// The name, copied from the SDK, which only keeps it while the test exists
+    name: [u8; NAME_LEN],
+    name_len: u8,
     /// Whether the test passed
     pub passed: bool,
+}
+
+/// Longest test name kept; longer names are cut.
+const NAME_LEN: usize = 32;
+
+#[cfg(feature = "defmt")]
+impl defmt::Format for AssemblyTestOutcome {
+    fn format(&self, f: defmt::Formatter) {
+        defmt::write!(f, "{=str}: {}", self.name(), self.passed)
+    }
+}
+
+impl AssemblyTestOutcome {
+    /// The SDK's name for the test, such as `"Basic read test"`.
+    pub fn name(&self) -> &str {
+        let bytes = &self.name[..self.name_len as usize];
+        // Cutting a long name may split a character, so keep the valid part
+        match core::str::from_utf8(bytes) {
+            Ok(name) => name,
+            Err(error) => core::str::from_utf8(&bytes[..error.valid_up_to()]).unwrap_or(""),
+        }
+    }
 }
 
 /// The outcomes of the tests [`Radar::assembly_test`] ran.
@@ -123,8 +145,9 @@ where
     /// Runs the `tests` given, such as [`AssemblyTest::ALL`]. `buffer` is the test's working
     /// memory, of at least [`ASSEMBLY_TEST_MIN_BUFFER_SIZE`] bytes.
     ///
-    /// The sensor is power-cycled before and after the test, so the radar is enabled and
-    /// unprepared afterwards, as after [`Radar::reset_sensor`]: calibrate it again before
+    /// The sensor is power-cycled before and after the test, which also recovers a
+    /// [faulted](RadarState::Faulted) radar. Afterwards the radar is enabled and
+    /// unprepared, as after [`Radar::reset_sensor`]: calibrate it again before
     /// measuring. When the interrupt pin does not rise within a second, or reports an error, the
     /// test is told the wait timed out, which fails the tests that need the interrupt.
     ///
@@ -214,7 +237,8 @@ where
 fn report(instance: &Instance) -> AssemblyTestReport {
     let mut report = AssemblyTestReport {
         outcomes: [AssemblyTestOutcome {
-            name: "",
+            name: [0; NAME_LEN],
+            name_len: 0,
             passed: false,
         }; AssemblyTest::ALL.len()],
         len: 0,
@@ -234,11 +258,11 @@ fn report(instance: &Instance) -> AssemblyTestReport {
     for (outcome, result) in report.outcomes.iter_mut().zip(results) {
         outcome.passed = result.test_result;
         if !result.test_name.is_null() {
-            // SAFETY: the names are NUL-terminated string literals in the SDK, which live as long
-            // as the program
-            outcome.name = unsafe { CStr::from_ptr(result.test_name) }
-                .to_str()
-                .unwrap_or("");
+            // SAFETY: the name is a NUL-terminated string, valid while the instance exists
+            let name = unsafe { CStr::from_ptr(result.test_name) }.to_bytes();
+            let len = name.len().min(NAME_LEN);
+            outcome.name[..len].copy_from_slice(&name[..len]);
+            outcome.name_len = len as u8;
         }
     }
     report
@@ -247,6 +271,19 @@ fn report(instance: &Instance) -> AssemblyTestReport {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn long_names_are_cut_at_a_character() {
+        let mut outcome = AssemblyTestOutcome {
+            name: [b'a'; NAME_LEN],
+            name_len: NAME_LEN as u8,
+            passed: true,
+        };
+        assert_eq!(outcome.name().len(), NAME_LEN);
+        // A two-byte character cut in half
+        outcome.name[NAME_LEN - 1] = 0xC3;
+        assert_eq!(outcome.name().len(), NAME_LEN - 1);
+    }
 
     #[test]
     fn tests_map_to_the_sdk_ids_in_order() {

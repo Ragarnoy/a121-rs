@@ -135,9 +135,9 @@ pub enum RadarState {
     Hibernating,
     /// The sensor's state is unknown: an operation failed in a way that can leave it busy or
     /// half-configured, such as an SPI transfer failure or a missed interrupt while measuring, or
-    /// an operation's future was dropped before it completed. [`Radar::reset_sensor`] and
-    /// [`Radar::calibrate`] power-cycle the sensor and recover it; every other operation that
-    /// drives the sensor is refused. The diagnostics [`Radar::is_connected`] and
+    /// an operation's future was dropped before it completed. [`Radar::reset_sensor`],
+    /// [`Radar::calibrate`] and [`Radar::assembly_test`] power-cycle the sensor and recover it;
+    /// every other operation that drives the sensor is refused. The diagnostics [`Radar::is_connected`] and
     /// [`Radar::check_status`] stay available.
     Faulted,
 }
